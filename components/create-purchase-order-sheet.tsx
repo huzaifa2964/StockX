@@ -4,9 +4,7 @@ import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
-  SheetBody,
   SheetClose,
-  SheetCloseButton,
   SheetContent,
   SheetDescription,
   SheetFooter,
@@ -14,7 +12,13 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Input } from "@/components/ui/input";
-import { Select } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Trash2, Plus } from "lucide-react";
 
 interface POItem {
@@ -75,7 +79,6 @@ export function CreatePurchaseOrderSheet({
   const [errors, setErrors] = useState<FormErrors>({});
   const [successMessage, setSuccessMessage] = useState("");
 
-  // Add new item row
   const addItem = () => {
     const newItem: POItem = {
       id: `item-${Date.now()}`,
@@ -88,7 +91,6 @@ export function CreatePurchaseOrderSheet({
     setItems([...items, newItem]);
   };
 
-  // Update item field
   const updateItem = (id: string, field: keyof POItem, value: string | number) => {
     setItems((prevItems) =>
       prevItems.map((item) => {
@@ -104,8 +106,6 @@ export function CreatePurchaseOrderSheet({
                 unitPrice: product.unitPrice,
               };
             }
-          }
-          if (field === "skuCode" && typeof value === "string") {
             return { ...item, skuCode: value };
           }
           if (field === "quantity" && typeof value === "number") {
@@ -127,18 +127,15 @@ export function CreatePurchaseOrderSheet({
     );
   };
 
-  // Remove item
   const removeItem = (id: string) => {
     setItems(items.filter((item) => item.id !== id));
   };
 
-  // Calculate total amount
   const totalAmount = items.reduce(
     (sum, item) => sum + item.quantity * item.unitPrice,
     0
   );
 
-  // Validate form
   const validateForm = (): boolean => {
     const newErrors: FormErrors = {};
 
@@ -177,19 +174,14 @@ export function CreatePurchaseOrderSheet({
     return Object.keys(newErrors).length === 0;
   };
 
-  // Submit form
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!validateForm()) {
-      return;
-    }
+    if (!validateForm()) return;
 
-    // Generate PO number (using counter for uniqueness)
     poCounterRef.current += 1;
     const poNumber = `PO-2026-${200 + poCounterRef.current}`;
 
-    // Prepare PO data
     const poData = {
       poNumber,
       supplier,
@@ -205,10 +197,8 @@ export function CreatePurchaseOrderSheet({
 
     console.log("Purchase Order Created:", poData);
 
-    // Show success message
     setSuccessMessage(`PO ${poNumber} created successfully!`);
 
-    // Reset form after 2 seconds
     setTimeout(() => {
       resetForm();
       onOpenChange(false);
@@ -235,10 +225,9 @@ export function CreatePurchaseOrderSheet({
               Create a new PO to replenish inventory. Review supplier details, items, pricing, and delivery timeline.
             </SheetDescription>
           </div>
-          <SheetCloseButton />
         </SheetHeader>
 
-        <SheetBody>
+        <div className="overflow-y-auto px-1 py-4">
           {successMessage ? (
             <div className="flex flex-col items-center justify-center rounded-xl border border-emerald-100 bg-emerald-50 py-12 text-center">
               <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100">
@@ -263,30 +252,30 @@ export function CreatePurchaseOrderSheet({
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-700" htmlFor="supplier">
+                  <label className="text-sm font-medium text-slate-700">
                     Supplier Name
                   </label>
                   <Select
-                    id="supplier"
                     value={supplier}
-                    onChange={(e) => {
-                      setSupplier(e.target.value);
+                    onValueChange={(value) => {
+                      setSupplier(value);
                       if (errors.supplier) {
                         const newErrors = { ...errors };
                         delete newErrors.supplier;
                         setErrors(newErrors);
                       }
                     }}
-                    defaultValue=""
                   >
-                    <option value="" disabled>
-                      Select supplier
-                    </option>
-                    {supplierOptions.map((sup) => (
-                      <option key={sup} value={sup}>
-                        {sup}
-                      </option>
-                    ))}
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select supplier" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {supplierOptions.map((sup) => (
+                        <SelectItem key={sup} value={sup}>
+                          {sup}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
                   </Select>
                   {errors.supplier && (
                     <p className="text-xs text-red-600">{errors.supplier}</p>
@@ -340,19 +329,20 @@ export function CreatePurchaseOrderSheet({
                             </label>
                             <Select
                               value={item.skuCode}
-                              onChange={(e) =>
-                                updateItem(item.id, "skuCode", e.target.value)
+                              onValueChange={(value) =>
+                                updateItem(item.id, "skuCode", value)
                               }
-                              defaultValue=""
                             >
-                              <option value="" disabled>
-                                Select product
-                              </option>
-                              {productCatalog.map((product) => (
-                                <option key={product.sku} value={product.sku}>
-                                  {product.sku} - {product.name}
-                                </option>
-                              ))}
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select product" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {productCatalog.map((product) => (
+                                  <SelectItem key={product.sku} value={product.sku}>
+                                    {product.sku} - {product.name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
                             </Select>
                             {errors[`item-${index}-sku`] && (
                               <p className="text-xs text-red-600">
@@ -369,11 +359,7 @@ export function CreatePurchaseOrderSheet({
                               type="number"
                               value={item.quantity}
                               onChange={(e) =>
-                                updateItem(
-                                  item.id,
-                                  "quantity",
-                                  parseInt(e.target.value) || 0
-                                )
+                                updateItem(item.id, "quantity", parseInt(e.target.value) || 0)
                               }
                               min="1"
                               placeholder="0"
@@ -394,11 +380,7 @@ export function CreatePurchaseOrderSheet({
                               type="number"
                               value={item.unitPrice}
                               onChange={(e) =>
-                                updateItem(
-                                  item.id,
-                                  "unitPrice",
-                                  parseFloat(e.target.value) || 0
-                                )
+                                updateItem(item.id, "unitPrice", parseFloat(e.target.value) || 0)
                               }
                               placeholder="0.00"
                               className="h-10"
@@ -469,10 +451,7 @@ export function CreatePurchaseOrderSheet({
 
                 <div className="grid gap-5 sm:grid-cols-2">
                   <div className="space-y-2">
-                    <label
-                      className="text-sm font-medium text-slate-700"
-                      htmlFor="expected-delivery"
-                    >
+                    <label className="text-sm font-medium text-slate-700" htmlFor="expected-delivery">
                       Expected Delivery Date
                     </label>
                     <Input
@@ -489,45 +468,38 @@ export function CreatePurchaseOrderSheet({
                       }}
                     />
                     {errors.expectedDelivery && (
-                      <p className="text-xs text-red-600">
-                        {errors.expectedDelivery}
-                      </p>
+                      <p className="text-xs text-red-600">{errors.expectedDelivery}</p>
                     )}
                   </div>
 
                   <div className="space-y-2">
-                    <label
-                      className="text-sm font-medium text-slate-700"
-                      htmlFor="payment-terms"
-                    >
+                    <label className="text-sm font-medium text-slate-700">
                       Payment Terms
                     </label>
                     <Select
-                      id="payment-terms"
                       value={paymentTerms}
-                      onChange={(e) => {
-                        setPaymentTerms(e.target.value);
+                      onValueChange={(value) => {
+                        setPaymentTerms(value);
                         if (errors.paymentTerms) {
                           const newErrors = { ...errors };
                           delete newErrors.paymentTerms;
                           setErrors(newErrors);
                         }
                       }}
-                      defaultValue=""
                     >
-                      <option value="" disabled>
-                        Select payment terms
-                      </option>
-                      {paymentTermsOptions.map((term) => (
-                        <option key={term} value={term}>
-                          {term}
-                        </option>
-                      ))}
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select payment terms" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {paymentTermsOptions.map((term) => (
+                          <SelectItem key={term} value={term}>
+                            {term}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
                     </Select>
                     {errors.paymentTerms && (
-                      <p className="text-xs text-red-600">
-                        {errors.paymentTerms}
-                      </p>
+                      <p className="text-xs text-red-600">{errors.paymentTerms}</p>
                     )}
                   </div>
                 </div>
@@ -540,14 +512,14 @@ export function CreatePurchaseOrderSheet({
                     id="notes"
                     value={notes}
                     onChange={(e) => setNotes(e.target.value)}
-                    placeholder="Enter any special instructions, delivery address, or notes for the supplier&hellip;"
+                    placeholder="Enter any special instructions, delivery address, or notes for the supplier..."
                     className="h-24 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm placeholder:text-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
                   />
                 </div>
               </section>
             </form>
           )}
-        </SheetBody>
+        </div>
 
         {!successMessage && (
           <SheetFooter className="flex items-center justify-between gap-3">
