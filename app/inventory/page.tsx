@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Boxes, ChevronRight, ClipboardList, Edit3, LayoutDashboard, Minus, Plus, Search, Settings, UserCircle2, Users } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
+import { ProtectedRoute } from "@/components/protected-route";
 
 const metrics = [
   { label: "Total Items", value: "1,284", detail: "+36 this month" },
@@ -78,7 +79,8 @@ export default function InventoryPage() {
   const [isAddItemOpen, setIsAddItemOpen] = useState(false);
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900">
+    <ProtectedRoute>
+      <div className="min-h-screen bg-slate-50 text-slate-900">
       <div className="flex min-h-screen">
         <aside className="fixed inset-y-0 left-0 hidden w-64 border-r border-slate-200 bg-white px-5 py-6 lg:flex lg:flex-col">
           <div className="mb-8">
@@ -401,7 +403,8 @@ export default function InventoryPage() {
         </div>
       </nav>
 
-      <AddItemSheet open={isAddItemOpen} onOpenChange={setIsAddItemOpen} />
-    </div>
+        <AddItemSheet open={isAddItemOpen} onOpenChange={setIsAddItemOpen} />
+      </div>
+    </ProtectedRoute>
   );
 }

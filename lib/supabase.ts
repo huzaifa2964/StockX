@@ -47,20 +47,38 @@ export async function resetPassword(email: string) {
   return { data, error };
 }
 
+export async function updateCurrentUserProfile(accountName: string, email: string) {
+  const { data, error } = await supabase.auth.updateUser({
+    email,
+    data: {
+      full_name: accountName,
+    },
+  });
+  return { data, error };
+}
+
 // Database query helpers
 export async function getProducts() {
+  const user = await getCurrentUser();
+  if (!user) return { data: null, error: { message: "Unauthorized" } };
+
   const { data, error } = await supabase
     .from("products")
     .select("*")
+    .eq("created_by", user.id)
     .order("created_at", { ascending: false });
   return { data, error };
 }
 
 export async function getProductById(id: string) {
+  const user = await getCurrentUser();
+  if (!user) return { data: null, error: { message: "Unauthorized" } };
+
   const { data, error } = await supabase
     .from("products")
     .select("*")
     .eq("id", id)
+    .eq("created_by", user.id)
     .single();
   return { data, error };
 }
@@ -91,6 +109,9 @@ export async function updateProduct(
   id: string,
   updates: Record<string, string | number | boolean>
 ) {
+  const user = await getCurrentUser();
+  if (!user) return { data: null, error: { message: "Unauthorized" } };
+
   const { data, error } = await supabase
     .from("products")
     .update({
@@ -98,20 +119,32 @@ export async function updateProduct(
       updated_at: new Date().toISOString(),
     })
     .eq("id", id)
+    .eq("created_by", user.id)
     .select();
   return { data, error };
 }
 
 export async function deleteProduct(id: string) {
-  const { error } = await supabase.from("products").delete().eq("id", id);
+  const user = await getCurrentUser();
+  if (!user) return { error: { message: "Unauthorized" } };
+
+  const { error } = await supabase
+    .from("products")
+    .delete()
+    .eq("id", id)
+    .eq("created_by", user.id);
   return { error };
 }
 
 // Customer helpers
 export async function getCustomers() {
+  const user = await getCurrentUser();
+  if (!user) return { data: null, error: { message: "Unauthorized" } };
+
   const { data, error } = await supabase
     .from("customers")
     .select("*")
+    .eq("created_by", user.id)
     .order("created_at", { ascending: false });
   return { data, error };
 }
@@ -140,6 +173,9 @@ export async function updateCustomer(
   id: string,
   updates: Record<string, string | number | boolean>
 ) {
+  const user = await getCurrentUser();
+  if (!user) return { data: null, error: { message: "Unauthorized" } };
+
   const { data, error } = await supabase
     .from("customers")
     .update({
@@ -147,15 +183,20 @@ export async function updateCustomer(
       updated_at: new Date().toISOString(),
     })
     .eq("id", id)
+    .eq("created_by", user.id)
     .select();
   return { data, error };
 }
 
 // Purchase Order helpers
 export async function getPurchaseOrders() {
+  const user = await getCurrentUser();
+  if (!user) return { data: null, error: { message: "Unauthorized" } };
+
   const { data, error } = await supabase
     .from("purchase_orders")
     .select("*")
+    .eq("created_by", user.id)
     .order("created_at", { ascending: false });
   return { data, error };
 }
@@ -221,6 +262,9 @@ export async function updatePurchaseOrder(
   id: string,
   updates: Record<string, string | number | boolean | Date>
 ) {
+  const user = await getCurrentUser();
+  if (!user) return { data: null, error: { message: "Unauthorized" } };
+
   const { data, error } = await supabase
     .from("purchase_orders")
     .update({
@@ -228,15 +272,20 @@ export async function updatePurchaseOrder(
       updated_at: new Date().toISOString(),
     })
     .eq("id", id)
+    .eq("created_by", user.id)
     .select();
   return { data, error };
 }
 
 // Invoice helpers
 export async function getInvoices() {
+  const user = await getCurrentUser();
+  if (!user) return { data: null, error: { message: "Unauthorized" } };
+
   const { data, error } = await supabase
     .from("invoices")
     .select("*")
+    .eq("created_by", user.id)
     .order("created_at", { ascending: false });
   return { data, error };
 }
@@ -262,10 +311,14 @@ export async function recordStockMovement(movement: {
 }
 
 export async function getStockMovements(productId: string) {
+  const user = await getCurrentUser();
+  if (!user) return { data: null, error: { message: "Unauthorized" } };
+
   const { data, error } = await supabase
     .from("stock_movements")
     .select("*")
     .eq("product_id", productId)
+    .eq("created_by", user.id)
     .order("created_at", { ascending: false });
   return { data, error };
 }

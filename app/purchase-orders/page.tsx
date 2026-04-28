@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { CreatePurchaseOrderSheet } from "@/components/create-purchase-order-sheet";
+import { ProtectedRoute } from "@/components/protected-route";
 
 const poMetrics = [
   { label: "Open Purchase Orders", value: "42", detail: "11 require approval" },
@@ -93,7 +94,8 @@ export default function PurchaseOrdersPage() {
   const [createPoOpen, setCreatePoOpen] = useState(false);
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900">
+    <ProtectedRoute>
+      <div className="min-h-screen bg-slate-50 text-slate-900">
       <div className="flex min-h-screen">
         <aside className="fixed inset-y-0 left-0 hidden w-64 border-r border-slate-200 bg-white px-5 py-6 lg:flex lg:flex-col">
           <div className="mb-8">
@@ -385,10 +387,11 @@ export default function PurchaseOrdersPage() {
         </div>
       </nav>
 
-      <CreatePurchaseOrderSheet
-        open={createPoOpen}
-        onOpenChange={setCreatePoOpen}
-      />
-    </div>
+        <CreatePurchaseOrderSheet
+          open={createPoOpen}
+          onOpenChange={setCreatePoOpen}
+        />
+      </div>
+    </ProtectedRoute>
   );
 }
