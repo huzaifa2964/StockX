@@ -2,8 +2,8 @@ import * as React from "react";
 
 import { cn } from "@/lib/utils";
 
-type ButtonVariant = "default" | "outline";
-type ButtonSize = "default" | "icon";
+type ButtonVariant = "default" | "outline" | "ghost";
+type ButtonSize = "default" | "icon" | "icon-sm";
 
 export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant;
@@ -13,11 +13,13 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
 const variantStyles: Record<ButtonVariant, string> = {
   default: "bg-blue-600 text-white hover:bg-blue-700",
   outline: "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50",
+  ghost: "bg-transparent text-slate-700 hover:bg-slate-100",
 };
 
 const sizeStyles: Record<ButtonSize, string> = {
   default: "h-10 px-4 py-2",
   icon: "h-10 w-10",
+  "icon-sm": "h-8 w-8",
 };
 
 export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
