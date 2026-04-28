@@ -149,9 +149,7 @@ export default function DashboardPage() {
                   <p className="text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Al-Noor Beverages</p>
                   <p className="text-sm font-semibold text-slate-900">Dashboard</p>
                 </div>
-                <Button variant="outline" size="icon" className="h-10 w-10 rounded-full bg-white">
-                  <Settings className="h-4 w-4" />
-                </Button>
+                <UserMenu compact />
               </div>
 
               <div className="relative order-3 w-full md:order-none md:flex-1 md:justify-center">

@@ -3,7 +3,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
-import { Boxes, ChevronRight, ClipboardList, LayoutDashboard, Mail, Phone, Search, Settings, UserCircle2, Users } from "lucide-react";
+import { UserMenu } from "@/components/user-menu";
+import { Boxes, ChevronRight, ClipboardList, LayoutDashboard, Mail, Phone, Search, Settings, Users } from "lucide-react";
 import Link from "next/link";
 import { ProtectedRoute } from "@/components/protected-route";
 
@@ -131,9 +132,7 @@ export default function CustomersPage() {
                   <p className="text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Al-Noor Beverages</p>
                   <p className="text-sm font-semibold text-slate-900">Customers</p>
                 </div>
-                <Button variant="outline" size="icon" className="h-10 w-10 rounded-full bg-white">
-                  <Settings className="h-4 w-4" />
-                </Button>
+                <UserMenu compact />
               </div>
 
               <div className="relative order-3 w-full md:order-none md:flex-1 md:justify-center">
@@ -149,13 +148,7 @@ export default function CustomersPage() {
                 <Button variant="outline" size="icon" className="h-11 w-11 rounded-full bg-white">
                   <Settings className="h-4 w-4" />
                 </Button>
-                <div className="flex items-center gap-3 rounded-full border border-slate-200 bg-white px-3 py-2">
-                  <UserCircle2 className="h-8 w-8 text-slate-400" />
-                  <div className="hidden text-right sm:block">
-                    <p className="text-sm font-semibold text-slate-900">Ahsan Malik</p>
-                    <p className="text-xs text-slate-500">Agency Manager</p>
-                  </div>
-                </div>
+                <UserMenu />
               </div>
             </div>
           </header>

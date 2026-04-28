@@ -24,7 +24,7 @@ import {
 } from "@/components/ui/dialog";
 import { updateCurrentUserProfile } from "@/lib/supabase";
 
-export function UserMenu() {
+export function UserMenu({ compact = false }: { compact?: boolean }) {
   const router = useRouter();
   const { user, signOut } = useAuth();
   const [isSigningOut, setIsSigningOut] = useState(false);
@@ -92,6 +92,16 @@ export function UserMenu() {
   };
 
   if (!user) {
+    if (compact) {
+      return (
+        <Link href="/login">
+          <Button variant="outline" className="h-10 rounded-full border-slate-200 bg-white px-3 text-sm text-slate-700">
+            Sign In
+          </Button>
+        </Link>
+      );
+    }
+
     return (
       <div className="flex items-center gap-2">
         <Link href="/login">
@@ -121,8 +131,8 @@ export function UserMenu() {
               variant="outline"
               className="h-10 rounded-full border-slate-200 bg-white px-3 text-sm text-slate-700 transition-all hover:bg-slate-100"
             >
-              <UserCircle2 className="mr-2 h-4 w-4" />
-              Manage Account
+              <UserCircle2 className={compact ? "h-4 w-4" : "mr-2 h-4 w-4"} />
+              {compact ? <span className="sr-only">Manage Account</span> : "Manage Account"}
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-56">
