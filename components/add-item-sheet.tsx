@@ -3,9 +3,7 @@
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
-  SheetBody,
   SheetClose,
-  SheetCloseButton,
   SheetContent,
   SheetDescription,
   SheetFooter,
@@ -13,7 +11,13 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Input } from "@/components/ui/input";
-import { Select } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 export function AddItemSheet({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   return (
@@ -26,10 +30,9 @@ export function AddItemSheet({ open, onOpenChange }: { open: boolean; onOpenChan
               Add a new item to the Al-Noor Beverages catalog. Keep the product name, stock values, and prices clear and simple.
             </SheetDescription>
           </div>
-          <SheetCloseButton />
         </SheetHeader>
 
-        <SheetBody>
+        <div className="overflow-y-auto px-1 py-4">
           <form className="space-y-8">
             <section className="space-y-4">
               <div>
@@ -48,31 +51,35 @@ export function AddItemSheet({ open, onOpenChange }: { open: boolean; onOpenChan
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-700" htmlFor="category">
+                  <label className="text-sm font-medium text-slate-700">
                     Category
                   </label>
-                  <Select id="category" defaultValue="">
-                    <option value="" disabled>
-                      Select category
-                    </option>
-                    <option value="Soda">Soda</option>
-                    <option value="Water">Water</option>
-                    <option value="Juice">Juice</option>
-                    <option value="Energy Drink">Energy Drink</option>
+                  <Select defaultValue="">
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select category" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Soda">Soda</SelectItem>
+                      <SelectItem value="Water">Water</SelectItem>
+                      <SelectItem value="Juice">Juice</SelectItem>
+                      <SelectItem value="Energy Drink">Energy Drink</SelectItem>
+                    </SelectContent>
                   </Select>
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-700" htmlFor="unit-type">
+                  <label className="text-sm font-medium text-slate-700">
                     Unit Type
                   </label>
-                  <Select id="unit-type" defaultValue="">
-                    <option value="" disabled>
-                      Select unit type
-                    </option>
-                    <option value="Single Bottle">Single Bottle</option>
-                    <option value="6-Pack">6-Pack</option>
-                    <option value="Case of 24">Case of 24</option>
+                  <Select defaultValue="">
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select unit type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Single Bottle">Single Bottle</SelectItem>
+                      <SelectItem value="6-Pack">6-Pack</SelectItem>
+                      <SelectItem value="Case of 24">Case of 24</SelectItem>
+                    </SelectContent>
                   </Select>
                 </div>
               </div>
@@ -117,7 +124,7 @@ export function AddItemSheet({ open, onOpenChange }: { open: boolean; onOpenChan
               </div>
             </section>
           </form>
-        </SheetBody>
+        </div>
 
         <SheetFooter className="flex items-center justify-between gap-3">
           <p className="text-sm text-slate-500">No database action yet. This panel is for Al-Noor data entry only.</p>
