@@ -1,5 +1,5 @@
 -- =====================================================
--- Al-Noor Beverages Distribution Dashboard - Database Setup
+-- StockX Database Setup
 -- Project: mpqwhqcrenfzyhdhpbga
 -- SAFE VERSION: Drops and recreates all objects
 -- =====================================================

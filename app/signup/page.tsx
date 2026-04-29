@@ -75,13 +75,13 @@ export default function SignupPage() {
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(255,255,255,0.22),_transparent_30%),radial-gradient(circle_at_bottom_right,_rgba(15,23,42,0.12),_transparent_34%)]" />
           <div className="relative z-10">
             <p className="text-xs font-semibold uppercase tracking-[0.32em] text-blue-100/80">
-              StockX onboarding
+              StockX
             </p>
             <h1 className="mt-4 max-w-md text-4xl font-semibold tracking-tight">
-              Create a secure agency account for operations, procurement, and collections.
+              Create a secure account for operations, procurement, and collections.
             </h1>
             <p className="mt-4 max-w-md text-sm leading-6 text-blue-50/90">
-              Set up managers and staff with a clean signup flow for the Al-Noor Beverages dashboard.
+              Set up managers and staff with a clean signup flow for the StockX dashboard.
             </p>
           </div>
 
@@ -100,7 +100,7 @@ export default function SignupPage() {
           <div className="w-full max-w-md space-y-8">
             <div className="text-center lg:text-left">
               <p className="text-xs font-semibold uppercase tracking-[0.28em] text-blue-600">
-                Agency Control Desk
+                StockX
               </p>
               <h2 className="mt-3 text-3xl font-semibold tracking-tight text-slate-950">
                 Create your account
@@ -196,12 +196,6 @@ export default function SignupPage() {
               </div>
             </form>
 
-            <div className="rounded-2xl border border-blue-100 bg-blue-50/70 p-5 text-sm text-slate-600">
-              <p className="font-semibold text-slate-900">Signup note</p>
-              <p className="mt-2">
-                This page is wired to Supabase auth and will create users in your project when the API key and email auth are enabled.
-              </p>
-            </div>
           </div>
         </section>
       </div>

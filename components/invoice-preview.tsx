@@ -73,7 +73,7 @@ export const InvoicePreview = forwardRef<HTMLDivElement, InvoicePreviewProps>(
           <div className="flex items-start justify-between gap-4">
             <div>
               <h1 className="text-3xl font-bold text-slate-900">INVOICE</h1>
-              <p className="mt-1 text-sm text-slate-600">Al-Noor Beverages Distribution</p>
+              <p className="mt-1 text-sm text-slate-600">StockX</p>
             </div>
             <div className="text-right">
               <p className="text-2xl font-bold text-blue-600">{invoiceNumber}</p>

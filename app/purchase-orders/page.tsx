@@ -200,10 +200,7 @@ export default function PurchaseOrdersPage() {
       <div className="flex min-h-screen">
         <aside className="fixed inset-y-0 left-0 hidden w-64 border-r border-slate-200 bg-white px-5 py-6 lg:flex lg:flex-col">
           <div className="mb-8">
-            <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">
-              Al-Noor Beverages Distribution
-            </p>
-            <h1 className="mt-2 text-xl font-semibold text-slate-900">Agency Control Desk</h1>
+            <h1 className="mt-2 text-xl font-semibold text-slate-900">Control Desk</h1>
           </div>
 
           <nav className="space-y-1 text-sm font-medium text-slate-600">
@@ -251,7 +248,7 @@ export default function PurchaseOrdersPage() {
 
               <div className="flex w-full items-center justify-between md:hidden">
                 <div>
-                  <p className="text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Al-Noor Beverages</p>
+                  <p className="text-xs font-medium uppercase tracking-[0.2em] text-slate-400">StockX</p>
                   <p className="text-sm font-semibold text-slate-900">Purchase Orders</p>
                 </div>
                 <UserMenu compact />
@@ -278,7 +275,7 @@ export default function PurchaseOrdersPage() {
           <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6 pb-24 sm:px-6 lg:px-8 lg:pb-8">
             <div className="mb-6 flex flex-col gap-4 border-b border-slate-200 pb-6 md:flex-row md:items-end md:justify-between">
               <div>
-                <p className="text-sm font-medium text-slate-500">Al-Noor Beverages Distribution</p>
+                <p className="text-sm font-medium text-slate-500">StockX</p>
                 <h2 className="mt-1 text-3xl font-semibold tracking-tight text-slate-950">Purchase Orders</h2>
                 <p className="mt-2 max-w-2xl text-sm text-slate-600">
                   Track supplier purchase cycles, approval status, and inbound stock timelines in one clear workflow.

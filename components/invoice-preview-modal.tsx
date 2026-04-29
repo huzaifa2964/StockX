@@ -53,7 +53,7 @@ export function InvoicePreviewModal({
         <!DOCTYPE html>
         <html>
         <head>
-          <title>${invoiceNumber} - Al-Noor Beverages</title>
+          <title>${invoiceNumber} - StockX</title>
           <style>
             * {
               margin: 0;

@@ -56,7 +56,7 @@ export default function LoginPage() {
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(37,99,235,0.35),_transparent_32%),radial-gradient(circle_at_bottom_right,_rgba(14,165,233,0.22),_transparent_28%)]" />
           <div className="relative z-10">
             <p className="text-xs font-semibold uppercase tracking-[0.32em] text-blue-200/80">
-              Al-Noor Beverages Distribution
+              StockX
             </p>
             <h1 className="mt-4 max-w-md text-4xl font-semibold tracking-tight">
               Control the warehouse, collections, and purchase flow from one desk.
@@ -84,7 +84,7 @@ export default function LoginPage() {
           <div className="w-full max-w-md space-y-8">
             <div className="text-center lg:text-left">
               <p className="text-xs font-semibold uppercase tracking-[0.28em] text-blue-600">
-                Agency Control Desk
+                StockX
               </p>
               <h2 className="mt-3 text-3xl font-semibold tracking-tight text-slate-950">
                 Sign in to StockX
@@ -154,15 +154,6 @@ export default function LoginPage() {
               </p>
             </form>
 
-            <div className="rounded-2xl border border-blue-100 bg-blue-50/70 p-5 text-sm text-slate-600">
-              <p className="font-semibold text-slate-900">Template status</p>
-              <p className="mt-2">
-                This login page is now a full template with a split layout, form validation, redirect handling, and auth entry point.
-              </p>
-              <p className="mt-3 text-xs text-slate-500">
-                If you want, I can also add a signup page and password reset flow.
-              </p>
-            </div>
           </div>
         </section>
       </div>

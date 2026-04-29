@@ -152,7 +152,7 @@ export function AddItemSheet({ open, onOpenChange }: { open: boolean; onOpenChan
           <div>
             <SheetTitle>Register Beverage</SheetTitle>
             <SheetDescription>
-              Add a new item to the Al-Noor Beverages catalog. Keep the product name, stock values, and prices clear and simple.
+              Add a new item to the StockX catalog. Keep the product name, stock values, and prices clear and simple.
             </SheetDescription>
           </div>
         </SheetHeader>

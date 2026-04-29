@@ -14,8 +14,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Al-Noor Beverages Distribution Dashboard",
-  description: "Inventory management dashboard for Al-Noor Beverages Distribution in Karachi, Pakistan.",
+  title: "StockX",
+  description: "StockX inventory, sales, and operations dashboard.",
 };
 
 export default function RootLayout({
