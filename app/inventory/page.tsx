@@ -8,63 +8,21 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Boxes, ChevronRight, ClipboardList, Edit3, LayoutDashboard, Minus, Plus, Search, Settings, Users } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { ProtectedRoute } from "@/components/protected-route";
+import { useAuth } from "@/app/providers";
+import { getCurrentUser, supabase } from "@/lib/supabase";
 
-const metrics = [
-  { label: "Total Items", value: "1,284", detail: "+36 this month" },
-  { label: "Low Stock Warnings", value: "19", detail: "5 need restock today" },
-  { label: "Total Crates in Warehouse", value: "8,450", detail: "92% space utilization" },
-  { label: "Total Value", value: "Rs 428,760,000", detail: "At wholesale price" },
-];
-
-const inventoryRows = [
-  {
-    sku: "CBL-1500-24",
-    name: "Coca-Cola 1.5L Case",
-    category: "Soda",
-    stock: 18,
-    minStock: 24,
-    unitPrice: "Rs 1,840",
-    image: "CC",
-  },
-  {
-    sku: "AQU-500-48",
-    name: "Nestle Pure Life 500ml Pack",
-    category: "Water",
-    stock: 112,
-    minStock: 40,
-    unitPrice: "Rs 1,025",
-    image: "NP",
-  },
-  {
-    sku: "FRT-250-12",
-    name: "Slice Mango Juice Case",
-    category: "Juice",
-    stock: 36,
-    minStock: 30,
-    unitPrice: "Rs 2,260",
-    image: "SL",
-  },
-  {
-    sku: "SPR-330-24",
-    name: "7Up 330ml Case",
-    category: "Soda",
-    stock: 64,
-    minStock: 48,
-    unitPrice: "Rs 1,590",
-    image: "7U",
-  },
-  {
-    sku: "WTR-1000-24",
-    name: "Pakola 1L Bottle",
-    category: "Water",
-    stock: 27,
-    minStock: 32,
-    unitPrice: "Rs 1,210",
-    image: "PK",
-  },
-];
+type ProductRow = {
+  sku: string;
+  name: string;
+  category: string;
+  stock: number;
+  minStock: number;
+  unitPrice: string;
+  image: string;
+  unitPriceValue: number;
+};
 
 const categoryStyles: Record<string, string> = {
   Soda: "bg-blue-50 text-blue-700 ring-blue-100",
@@ -77,7 +35,68 @@ function progressPercent(stock: number, minStock: number) {
 }
 
 export default function InventoryPage() {
+  const { user } = useAuth();
   const [isAddItemOpen, setIsAddItemOpen] = useState(false);
+  const [productsData, setProductsData] = useState<ProductRow[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchProducts = async () => {
+      try {
+        const user = await getCurrentUser();
+        if (!user) {
+          setProductsData([]);
+          setLoading(false);
+          return;
+        }
+
+        const { data, error } = await supabase
+          .from("products")
+          .select("*")
+          .eq("created_by", user.id)
+          .order("created_at", { ascending: false });
+
+        if (error) {
+          console.warn("Could not load products from database:", error.message);
+          setProductsData([]);
+          return;
+        }
+
+        // Transform database data to match component format
+        const transformed = (data || []).map((product: any) => ({
+          sku: product.sku_code,
+          name: product.product_name,
+          category: product.category,
+          stock: product.current_stock,
+          minStock: product.minimum_stock,
+          unitPrice: `Rs ${(product.sell_price || 0).toLocaleString()}`,
+          unitPriceValue: Number(product.sell_price || 0),
+          image: product.product_name.substring(0, 2).toUpperCase(),
+        }));
+
+        setProductsData(transformed);
+      } catch (error: any) {
+        console.warn("Could not fetch products from database:", error?.message);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchProducts();
+  }, [isAddItemOpen, user?.id]);
+
+  const totalStock = productsData.reduce((sum, product) => sum + product.stock, 0);
+  const lowStockCount = productsData.filter((product) => product.stock <= product.minStock).length;
+  const totalValue = productsData.reduce((sum, product) => sum + product.stock * product.unitPriceValue, 0);
+
+  const metrics = [
+    { label: "Total Items", value: productsData.length.toString(), detail: "Live catalog rows" },
+    { label: "Low Stock Warnings", value: lowStockCount.toString(), detail: "Items at or below minimum" },
+    { label: "Total Units in Warehouse", value: totalStock.toLocaleString(), detail: "Across all products" },
+    { label: "Total Value", value: `Rs ${totalValue.toLocaleString()}`, detail: "At current sell price" },
+  ];
+
+  const productsToDisplay = productsData;
 
   return (
     <ProtectedRoute>
@@ -97,7 +116,7 @@ export default function InventoryPage() {
               { label: "Inventory", href: "/inventory", active: true },
               { label: "Purchase Orders", href: "/purchase-orders", active: false },
               { label: "Customers", href: "/customers", active: false },
-              { label: "Reports", href: "#", active: false },
+              { label: "Sales / Invoices", href: "/sales", active: false },
             ].map((item) => (
               <Link
                 key={item.label}
@@ -120,8 +139,8 @@ export default function InventoryPage() {
             </p>
             <div className="mt-3 flex items-center justify-between">
               <div>
-                <p className="text-sm font-semibold text-slate-900">Korangi Depot, Karachi</p>
-                <p className="text-xs text-slate-500">Main warehouse / 14 active users</p>
+                <p className="text-sm font-semibold text-slate-900">Sheikhupura Central Depot</p>
+                <p className="text-xs text-slate-500">Main warehouse / {productsData.length} live items</p>
               </div>
               <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
             </div>
@@ -171,7 +190,7 @@ export default function InventoryPage() {
                   Agency Inventory Dashboard
                 </h2>
                 <p className="mt-2 max-w-2xl text-sm text-slate-600">
-                  Monitor stock, catch low inventory early, and keep the Al-Noor warehouse running smoothly across Karachi routes.
+                  Monitor stock, catch low inventory early, and keep the Al-Noor warehouse running smoothly across Sheikhupura routes.
                 </p>
               </div>
 
@@ -228,146 +247,160 @@ export default function InventoryPage() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 bg-white">
-                      {inventoryRows.map((item) => {
-                        const lowStock = item.stock < item.minStock;
-                        const progress = progressPercent(item.stock, item.minStock);
+                      {productsToDisplay.length > 0 ? (
+                        productsToDisplay.map((item) => {
+                          const lowStock = item.stock < item.minStock;
+                          const progress = progressPercent(item.stock, item.minStock);
 
-                        return (
-                          <tr key={item.sku} className="hover:bg-slate-50/80">
-                            <td className="whitespace-nowrap px-6 py-4 align-middle text-slate-500">
-                              {item.sku}
-                            </td>
-                            <td className="px-6 py-4 align-middle">
-                              <div className="flex items-center gap-3">
-                                <div
-                                  className="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-100 text-xs font-semibold text-slate-700"
-                                  aria-hidden="true"
-                                >
-                                  {item.image}
-                                </div>
-                                <div>
-                                  <p className="font-medium text-slate-950">{item.name}</p>
-                                  <p className="text-xs text-slate-500">Beverage stock item</p>
-                                </div>
-                              </div>
-                            </td>
-                            <td className="px-6 py-4 align-middle">
-                              <Badge
-                                className={`rounded-full px-3 py-1 text-xs font-semibold ring-1 ${categoryStyles[item.category]}`}
-                              >
-                                {item.category}
-                              </Badge>
-                            </td>
-                            <td className="px-6 py-4 align-middle">
-                              <div className="w-full max-w-xs">
-                                <div className="mb-2 flex items-center justify-between text-xs text-slate-500">
-                                  <span>{item.stock} crates in stock</span>
-                                  <span
-                                    className={
-                                      lowStock
-                                        ? "font-semibold text-red-600"
-                                        : "font-medium text-emerald-600"
-                                    }
-                                  >
-                                    Min {item.minStock}
-                                  </span>
-                                </div>
-                                <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+                          return (
+                            <tr key={item.sku} className="hover:bg-slate-50/80">
+                              <td className="whitespace-nowrap px-6 py-4 align-middle text-slate-500">
+                                {item.sku}
+                              </td>
+                              <td className="px-6 py-4 align-middle">
+                                <div className="flex items-center gap-3">
                                   <div
-                                    className={`h-full rounded-full transition-all ${
-                                      lowStock
-                                        ? "bg-red-500"
-                                        : progress < 60
-                                          ? "bg-amber-500"
-                                          : "bg-emerald-500"
-                                    }`}
-                                    style={{ width: `${progress}%` }}
-                                  />
+                                    className="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-100 text-xs font-semibold text-slate-700"
+                                    aria-hidden="true"
+                                  >
+                                    {item.image}
+                                  </div>
+                                  <div>
+                                    <p className="font-medium text-slate-950">{item.name}</p>
+                                    <p className="text-xs text-slate-500">Live product record</p>
+                                  </div>
                                 </div>
-                              </div>
-                            </td>
-                            <td className="whitespace-nowrap px-6 py-4 align-middle font-medium text-slate-900">
-                              {item.unitPrice}
-                            </td>
-                            <td className="px-6 py-4 align-middle">
-                              <div className="flex items-center justify-end gap-2">
-                                <Button
-                                  variant="outline"
-                                  size="icon"
-                                  className="h-9 w-9 rounded-full border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
-                                  aria-label={`Increase stock for ${item.name}`}
+                              </td>
+                              <td className="px-6 py-4 align-middle">
+                                <Badge
+                                  className={`rounded-full px-3 py-1 text-xs font-semibold ring-1 ${categoryStyles[item.category] || categoryStyles.Soda}`}
                                 >
-                                  <Plus className="h-4 w-4" />
-                                </Button>
-                                <Button
-                                  variant="outline"
-                                  size="icon"
-                                  className="h-9 w-9 rounded-full border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
-                                  aria-label={`Decrease stock for ${item.name}`}
-                                >
-                                  <Minus className="h-4 w-4" />
-                                </Button>
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })}
+                                  {item.category}
+                                </Badge>
+                              </td>
+                              <td className="px-6 py-4 align-middle">
+                                <div className="w-full max-w-xs">
+                                  <div className="mb-2 flex items-center justify-between text-xs text-slate-500">
+                                    <span>{item.stock} crates in stock</span>
+                                    <span
+                                      className={
+                                        lowStock
+                                          ? "font-semibold text-red-600"
+                                          : "font-medium text-emerald-600"
+                                      }
+                                    >
+                                      Min {item.minStock}
+                                    </span>
+                                  </div>
+                                  <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+                                    <div
+                                      className={`h-full rounded-full transition-all ${
+                                        lowStock
+                                          ? "bg-red-500"
+                                          : progress < 60
+                                            ? "bg-amber-500"
+                                            : "bg-emerald-500"
+                                      }`}
+                                      style={{ width: `${progress}%` }}
+                                    />
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="whitespace-nowrap px-6 py-4 align-middle font-medium text-slate-900">
+                                {item.unitPrice}
+                              </td>
+                              <td className="px-6 py-4 align-middle">
+                                <div className="flex items-center justify-end gap-2">
+                                  <Button
+                                    variant="outline"
+                                    size="icon"
+                                    className="h-9 w-9 rounded-full border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                                    aria-label={`Increase stock for ${item.name}`}
+                                  >
+                                    <Plus className="h-4 w-4" />
+                                  </Button>
+                                  <Button
+                                    variant="outline"
+                                    size="icon"
+                                    className="h-9 w-9 rounded-full border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                                    aria-label={`Decrease stock for ${item.name}`}
+                                  >
+                                    <Minus className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })
+                      ) : (
+                        <tr>
+                          <td colSpan={6} className="px-6 py-10 text-center text-sm text-slate-500">
+                            {loading ? "Loading inventory from Supabase..." : "No products found in the database yet."}
+                          </td>
+                        </tr>
+                      )}
                     </tbody>
                   </table>
                 </div>
 
                 <div className="space-y-3 p-4 md:hidden">
-                  {inventoryRows.map((item) => {
-                    const lowStock = item.stock < item.minStock;
-                    const progress = progressPercent(item.stock, item.minStock);
+                  {productsToDisplay.length > 0 ? (
+                    productsToDisplay.map((item) => {
+                      const lowStock = item.stock < item.minStock;
+                      const progress = progressPercent(item.stock, item.minStock);
 
-                    return (
-                      <div key={item.sku} className="rounded-xl border border-slate-200 p-4">
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <p className="text-sm font-semibold text-slate-950">{item.name}</p>
-                            <p className="text-xs text-slate-500">{item.sku}</p>
+                      return (
+                        <div key={item.sku} className="rounded-xl border border-slate-200 p-4">
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <p className="text-sm font-semibold text-slate-950">{item.name}</p>
+                              <p className="text-xs text-slate-500">{item.sku}</p>
+                            </div>
+                            <Badge className={`rounded-full px-3 py-1 text-xs font-semibold ring-1 ${categoryStyles[item.category] || categoryStyles.Soda}`}>
+                              {item.category}
+                            </Badge>
                           </div>
-                          <Badge className={`rounded-full px-3 py-1 text-xs font-semibold ring-1 ${categoryStyles[item.category]}`}>
-                            {item.category}
-                          </Badge>
-                        </div>
 
-                        <div className="mt-3">
-                          <div className="mb-2 flex items-center justify-between text-xs text-slate-500">
-                            <span>{item.stock} crates in stock</span>
-                            <span className={lowStock ? "font-semibold text-red-600" : "font-medium text-emerald-600"}>
-                              Min {item.minStock}
-                            </span>
+                          <div className="mt-3">
+                            <div className="mb-2 flex items-center justify-between text-xs text-slate-500">
+                              <span>{item.stock} crates in stock</span>
+                              <span className={lowStock ? "font-semibold text-red-600" : "font-medium text-emerald-600"}>
+                                Min {item.minStock}
+                              </span>
+                            </div>
+                            <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+                              <div
+                                className={`h-full rounded-full ${
+                                  lowStock
+                                    ? "bg-red-500"
+                                    : progress < 60
+                                      ? "bg-amber-500"
+                                      : "bg-emerald-500"
+                                }`}
+                                style={{ width: `${progress}%` }}
+                              />
+                            </div>
                           </div>
-                          <div className="h-2 overflow-hidden rounded-full bg-slate-100">
-                            <div
-                              className={`h-full rounded-full ${
-                                lowStock
-                                  ? "bg-red-500"
-                                  : progress < 60
-                                    ? "bg-amber-500"
-                                    : "bg-emerald-500"
-                              }`}
-                              style={{ width: `${progress}%` }}
-                            />
-                          </div>
-                        </div>
 
-                        <div className="mt-4 flex items-center justify-between">
-                          <p className="text-sm font-semibold text-slate-900">{item.unitPrice}</p>
-                          <div className="flex items-center gap-2">
-                            <Button variant="outline" size="icon" className="h-9 w-9 rounded-full">
-                              <Plus className="h-4 w-4" />
-                            </Button>
-                            <Button variant="outline" size="icon" className="h-9 w-9 rounded-full">
-                              <Minus className="h-4 w-4" />
-                            </Button>
+                          <div className="mt-4 flex items-center justify-between">
+                            <p className="text-sm font-semibold text-slate-900">{item.unitPrice}</p>
+                            <div className="flex items-center gap-2">
+                              <Button variant="outline" size="icon" className="h-9 w-9 rounded-full">
+                                <Plus className="h-4 w-4" />
+                              </Button>
+                              <Button variant="outline" size="icon" className="h-9 w-9 rounded-full">
+                                <Minus className="h-4 w-4" />
+                              </Button>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    })
+                  ) : (
+                    <div className="rounded-xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">
+                      {loading ? "Loading inventory from Supabase..." : "No products found in the database yet."}
+                    </div>
+                  )}
                 </div>
               </CardContent>
             </Card>

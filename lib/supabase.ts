@@ -128,11 +128,7 @@ export async function deleteProduct(id: string) {
   const user = await getCurrentUser();
   if (!user) return { error: { message: "Unauthorized" } };
 
-  const { error } = await supabase
-    .from("products")
-    .delete()
-    .eq("id", id)
-    .eq("created_by", user.id);
+  const { error } = await supabase.from("products").delete().eq("id", id).eq("created_by", user.id);
   return { error };
 }
 
@@ -278,6 +274,197 @@ export async function updatePurchaseOrder(
 }
 
 // Invoice helpers
+
+export async function createInvoice(invoice: {
+  customer_id: string;
+  invoice_date?: string;
+  due_date?: string;
+  paid_amount?: number;
+  notes?: string;
+  items: Array<{
+    product_id: string;
+    product_name: string;
+    sku_code?: string;
+    category?: string;
+    quantity: number;
+    unit_price: number;
+  }>;
+}) {
+  const user = await getCurrentUser();
+  if (!user) return { data: null, error: { message: "Unauthorized" } };
+
+  if (!invoice.items || invoice.items.length === 0) {
+    return { data: null, error: { message: "Add at least one item to create an invoice." } };
+  }
+
+  const normalizedItems = invoice.items.map((item) => ({
+    ...item,
+    quantity: Number(item.quantity),
+    unit_price: Number(item.unit_price),
+  }));
+
+  const productIds = Array.from(new Set(normalizedItems.map((item) => item.product_id)));
+  const { data: products, error: productsError } = await supabase
+    .from("products")
+    .select("id, product_name, sku_code, category, current_stock")
+    .in("id", productIds)
+    .eq("created_by", user.id);
+
+  if (productsError) {
+    return { data: null, error: productsError };
+  }
+
+  const productLookup = new Map(
+    (products || []).map((product) => [product.id, product])
+  );
+
+  for (const item of normalizedItems) {
+    if (item.quantity <= 0) {
+      return { data: null, error: { message: `Quantity for ${item.product_name} must be greater than zero.` } };
+    }
+
+    const product = productLookup.get(item.product_id);
+    if (!product) {
+      return { data: null, error: { message: `${item.product_name} is not available in your catalog.` } };
+    }
+
+    if (item.quantity > Number(product.current_stock || 0)) {
+      return {
+        data: null,
+        error: { message: `${product.product_name} only has ${Number(product.current_stock || 0)} units available.` },
+      };
+    }
+  }
+
+  const totalAmount = normalizedItems.reduce(
+    (sum, item) => sum + item.quantity * item.unit_price,
+    0
+  );
+  const paidAmount = Math.max(0, Math.min(Number(invoice.paid_amount || 0), totalAmount));
+  const balanceDue = Math.max(totalAmount - paidAmount, 0);
+  const invoiceStatus = paidAmount >= totalAmount ? "Paid" : paidAmount > 0 ? "Partial" : "Pending";
+  const invoiceNumber = `INV-${new Date().getFullYear()}-${Date.now().toString().slice(-7)}`;
+
+  const { data: customerRow, error: customerError } = await supabase
+    .from("customers")
+    .select("id, outstanding_balance")
+    .eq("id", invoice.customer_id)
+    .eq("created_by", user.id)
+    .single();
+
+  if (customerError) {
+    return { data: null, error: customerError };
+  }
+
+  const { data: invoiceRow, error: invoiceError } = await supabase
+    .from("invoices")
+    .insert({
+      invoice_number: invoiceNumber,
+      customer_id: invoice.customer_id,
+      total_amount: totalAmount,
+      status: invoiceStatus,
+      due_date: invoice.due_date,
+      invoice_date: invoice.invoice_date || new Date().toISOString().slice(0, 10),
+      notes: invoice.notes,
+      created_by: user.id,
+    })
+    .select()
+    .single();
+
+  if (invoiceError || !invoiceRow) {
+    return { data: null, error: invoiceError };
+  }
+
+  const createdItemRows = normalizedItems.map((item) => ({
+    invoice_id: invoiceRow.id,
+    product_id: item.product_id,
+    product_name: item.product_name,
+    sku_code: item.sku_code,
+    category: item.category,
+    quantity: item.quantity,
+    unit_price: item.unit_price,
+  }));
+
+  const { error: itemsError } = await supabase.from("invoice_items").insert(createdItemRows);
+  if (itemsError) {
+    await supabase.from("invoices").delete().eq("id", invoiceRow.id).eq("created_by", user.id);
+    return { data: null, error: itemsError };
+  }
+
+  const updatedProducts: Array<{ id: string; current_stock: number }> = [];
+
+  try {
+    for (const item of normalizedItems) {
+      const product = productLookup.get(item.product_id);
+      if (!product) {
+        throw new Error(`${item.product_name} is no longer available in the catalog.`);
+      }
+      const nextStock = Number(product.current_stock || 0) - item.quantity;
+
+      const { error: stockError } = await supabase
+        .from("products")
+        .update({
+          current_stock: nextStock,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", product.id)
+        .eq("created_by", user.id);
+
+      if (stockError) {
+        throw stockError;
+      }
+
+      updatedProducts.push({ id: product.id, current_stock: Number(product.current_stock || 0) });
+
+      const { error: movementError } = await supabase.from("stock_movements").insert({
+        created_by: user.id,
+        product_id: product.id,
+        movement_type: "sale",
+        quantity: item.quantity,
+        reference_type: "invoice",
+        reference_id: invoiceRow.id,
+        notes: `Invoice ${invoiceNumber}`,
+      });
+
+      if (movementError) {
+        throw movementError;
+      }
+    }
+
+    if (balanceDue > 0) {
+      const { error: customerUpdateError } = await supabase
+        .from("customers")
+        .update({
+          outstanding_balance: Number(customerRow.outstanding_balance || 0) + balanceDue,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", invoice.customer_id)
+        .eq("created_by", user.id);
+
+      if (customerUpdateError) {
+        throw customerUpdateError;
+      }
+    }
+
+    return { data: invoiceRow, error: null };
+  } catch (error: any) {
+    for (const restoredProduct of updatedProducts) {
+      await supabase
+        .from("products")
+        .update({
+          current_stock: restoredProduct.current_stock,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", restoredProduct.id)
+        .eq("created_by", user.id);
+    }
+
+    await supabase.from("invoice_items").delete().eq("invoice_id", invoiceRow.id);
+    await supabase.from("invoices").delete().eq("id", invoiceRow.id).eq("created_by", user.id);
+
+    return { data: null, error };
+  }
+}
 export async function getInvoices() {
   const user = await getCurrentUser();
   if (!user) return { data: null, error: { message: "Unauthorized" } };

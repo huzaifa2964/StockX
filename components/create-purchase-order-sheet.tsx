@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useEffect, useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -20,6 +20,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Trash2, Plus } from "lucide-react";
+import { useAuth } from "@/app/providers";
+import { getCurrentUser, supabase } from "@/lib/supabase";
 
 interface POItem {
   id: string;
@@ -30,29 +32,17 @@ interface POItem {
   unitPrice: number;
 }
 
+interface ProductOption {
+  id: string;
+  sku_code: string;
+  product_name: string;
+  category: string;
+  sell_price: number | null;
+}
+
 interface FormErrors {
   [key: string]: string;
 }
-
-const supplierOptions = [
-  "Continental Beverages Ltd",
-  "Aqua Pure Pakistan",
-  "Fresh Valley Juices",
-  "Energy Rush Pvt Ltd",
-  "Mountain Springs Water",
-  "Tropical Fruit Juice Co",
-];
-
-const productCatalog = [
-  { sku: "COLA-1.5L", name: "Coca-Cola 1.5L", category: "Soda", unitPrice: 185 },
-  { sku: "COLA-2.5L", name: "Coca-Cola 2.5L", category: "Soda", unitPrice: 295 },
-  { sku: "SPRITE-1.5L", name: "Sprite 1.5L", category: "Soda", unitPrice: 175 },
-  { sku: "FANTA-1.5L", name: "Fanta Orange 1.5L", category: "Soda", unitPrice: 165 },
-  { sku: "WATER-1.5L", name: "Aqua Pure 1.5L", category: "Water", unitPrice: 120 },
-  { sku: "WATER-5L", name: "Aqua Pure 5L", category: "Water", unitPrice: 380 },
-  { sku: "JUICE-1L", name: "Fresh Orange Juice 1L", category: "Juice", unitPrice: 220 },
-  { sku: "ENERGY-500ML", name: "Energy Rush 500ML", category: "Energy", unitPrice: 350 },
-];
 
 const paymentTermsOptions = [
   "Net 7 Days",
@@ -70,14 +60,49 @@ export function CreatePurchaseOrderSheet({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  const { user } = useAuth();
   const poCounterRef = useRef(0);
   const [supplier, setSupplier] = useState("");
   const [items, setItems] = useState<POItem[]>([]);
+  const [productOptions, setProductOptions] = useState<ProductOption[]>([]);
   const [expectedDelivery, setExpectedDelivery] = useState("");
   const [paymentTerms, setPaymentTerms] = useState("");
   const [notes, setNotes] = useState("");
   const [errors, setErrors] = useState<FormErrors>({});
   const [successMessage, setSuccessMessage] = useState("");
+
+  useEffect(() => {
+    const fetchProducts = async () => {
+      if (!open) return;
+
+      try {
+        const user = await getCurrentUser();
+        if (!user) {
+          setProductOptions([]);
+          return;
+        }
+
+        const { data, error } = await supabase
+          .from("products")
+          .select("id, sku_code, product_name, category, sell_price")
+          .eq("created_by", user.id)
+          .order("created_at", { ascending: false });
+
+        if (error) {
+          console.warn("Could not load product catalog for purchase orders:", error.message);
+          setProductOptions([]);
+          return;
+        }
+
+        setProductOptions(data || []);
+      } catch (error: any) {
+        console.warn("Could not load product catalog for purchase orders:", error?.message);
+        setProductOptions([]);
+      }
+    };
+
+    fetchProducts();
+  }, [open]);
 
   const addItem = () => {
     const newItem: POItem = {
@@ -96,14 +121,14 @@ export function CreatePurchaseOrderSheet({
       prevItems.map((item) => {
         if (item.id === id) {
           if (field === "skuCode" && typeof value === "string") {
-            const product = productCatalog.find((p) => p.sku === value);
+            const product = productOptions.find((p) => p.sku_code === value);
             if (product) {
               return {
                 ...item,
                 skuCode: value,
-                productName: product.name,
+                productName: product.product_name,
                 category: product.category,
-                unitPrice: product.unitPrice,
+                unitPrice: product.sell_price || 0,
               };
             }
             return { ...item, skuCode: value };
@@ -174,35 +199,60 @@ export function CreatePurchaseOrderSheet({
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!validateForm()) return;
 
-    poCounterRef.current += 1;
-    const poNumber = `PO-2026-${200 + poCounterRef.current}`;
+    try {
+      const user = await getCurrentUser();
+      if (!user) {
+        setErrors({ submit: "Please sign in to create purchase orders." });
+        return;
+      }
 
-    const poData = {
-      poNumber,
-      supplier,
-      items: items.length,
-      quantity: items.reduce((sum, item) => sum + item.quantity, 0),
-      amount: `Rs ${totalAmount.toLocaleString()}`,
-      status: "Pending Approval",
-      expectedDelivery,
-      paymentTerms,
-      notes,
-      createdDate: new Date().toLocaleDateString("en-PK"),
-    };
+      poCounterRef.current += 1;
+      const poNumber = `PO-2026-${200 + poCounterRef.current}`;
 
-    console.log("Purchase Order Created:", poData);
+      const { data, error } = await supabase
+        .from("purchase_orders")
+        .insert([
+          {
+            created_by: user.id,
+            po_number: poNumber,
+            supplier_name: supplier,
+            status: "Pending Approval",
+            expected_delivery_date: expectedDelivery,
+            payment_terms: paymentTerms,
+            total_amount: totalAmount,
+            notes,
+            items_count: items.length,
+          },
+        ])
+        .select();
 
-    setSuccessMessage(`PO ${poNumber} created successfully!`);
+      if (error) {
+        // Check if it's a table not found error
+        if (error.message.includes("does not exist") || error.message.includes("purchase_orders")) {
+          setErrors({ 
+            submit: "Database tables not created yet. Please run the migration SQL in Supabase. See DATABASE_SETUP.md for instructions." 
+          });
+        } else {
+          setErrors({ submit: error.message });
+        }
+        return;
+      }
 
-    setTimeout(() => {
-      resetForm();
-      onOpenChange(false);
-    }, 2000);
+      setSuccessMessage(`✓ PO ${poNumber} created successfully!`);
+
+      setTimeout(() => {
+        resetForm();
+        onOpenChange(false);
+      }, 2000);
+    } catch (error: any) {
+      setErrors({ submit: "Failed to create purchase order. Please try again." });
+      console.error("Error:", error);
+    }
   };
 
   const resetForm = () => {
@@ -250,7 +300,7 @@ export function CreatePurchaseOrderSheet({
                     Supplier Information
                   </h3>
                   <p className="mt-1 text-sm text-slate-500">
-                    Select the supplier and review their contact details.
+                    Enter the supplier name and pull items from the live catalog.
                   </p>
                 </div>
 
@@ -258,28 +308,19 @@ export function CreatePurchaseOrderSheet({
                   <label className="text-sm font-medium text-slate-700">
                     Supplier Name
                   </label>
-                  <Select
+                  <Input
                     value={supplier}
-                    onValueChange={(value) => {
-                      setSupplier(value);
+                    onChange={(e) => {
+                      setSupplier(e.target.value);
                       if (errors.supplier) {
                         const newErrors = { ...errors };
                         delete newErrors.supplier;
                         setErrors(newErrors);
                       }
                     }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select supplier" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {supplierOptions.map((sup) => (
-                        <SelectItem key={sup} value={sup}>
-                          {sup}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    placeholder="Enter supplier name"
+                    className="h-10"
+                  />
                   {errors.supplier && (
                     <p className="text-xs text-red-600">{errors.supplier}</p>
                   )}
@@ -294,7 +335,7 @@ export function CreatePurchaseOrderSheet({
                       Items & Quantities
                     </h3>
                     <p className="mt-1 text-sm text-slate-500">
-                      Add items from the catalog. Prices auto-populate based on SKU.
+                      Add items from the live product catalog. Prices auto-populate based on SKU.
                     </p>
                   </div>
                   <Button
@@ -337,13 +378,18 @@ export function CreatePurchaseOrderSheet({
                                 <SelectValue placeholder="Select product" />
                               </SelectTrigger>
                               <SelectContent>
-                                {productCatalog.map((product) => (
-                                  <SelectItem key={product.sku} value={product.sku}>
-                                    {product.sku} - {product.name}
+                                  {productOptions.map((product) => (
+                                    <SelectItem key={product.sku_code} value={product.sku_code}>
+                                      {product.sku_code} - {product.product_name}
                                   </SelectItem>
                                 ))}
                               </SelectContent>
                             </Select>
+                              {productOptions.length === 0 && (
+                                <p className="text-xs text-slate-500">
+                                  No products found. Add products in Inventory first.
+                                </p>
+                              )}
                             {errors[`item-${index}-sku`] && (
                               <p className="text-xs text-red-600">
                                 {errors[`item-${index}-sku`]}
@@ -524,7 +570,13 @@ export function CreatePurchaseOrderSheet({
         {!successMessage && (
           <SheetFooter className="sticky bottom-0 z-10 flex flex-col gap-3 border-t border-slate-200 bg-white/95 backdrop-blur sm:flex-row sm:items-center sm:justify-between">
             <p className="text-xs text-slate-500">
-              {items.length > 0 && `${items.length} item${items.length !== 1 ? "s" : ""} • Rs ${totalAmount.toLocaleString()}`}
+              {errors.submit ? (
+                <span className="text-red-600">{errors.submit}</span>
+              ) : successMessage ? (
+                <span className="text-emerald-600">{successMessage}</span>
+              ) : items.length > 0 ? (
+                `${items.length} item${items.length !== 1 ? "s" : ""} • Rs ${totalAmount.toLocaleString()}`
+              ) : null}
             </p>
             <div className="grid w-full grid-cols-2 gap-3 sm:flex sm:w-auto">
               <SheetClose asChild>

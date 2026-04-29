@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -22,57 +22,28 @@ import {
 import Link from "next/link";
 import { CreatePurchaseOrderSheet } from "@/components/create-purchase-order-sheet";
 import { ProtectedRoute } from "@/components/protected-route";
-
-const poMetrics = [
-  { label: "Open Purchase Orders", value: "42", detail: "11 require approval" },
-  { label: "Expected This Week", value: "Rs 28.7M", detail: "From 9 suppliers" },
-  { label: "Received On Time", value: "91%", detail: "Last 30 days" },
-  { label: "Pending GRN", value: "6", detail: "Warehouse action needed" },
-];
-
-const monthlyPurchase = [54, 61, 59, 66, 70, 76, 73, 79, 84, 81, 88, 93];
-const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-
-const orders = [
-  {
-    poNo: "PO-2026-188",
-    supplier: "Continental Beverages Ltd",
-    category: "Soda",
-    amount: "Rs 4,280,000",
-    status: "Approved",
-    expected: "30 Apr 2026",
-  },
-  {
-    poNo: "PO-2026-191",
-    supplier: "Aqua Pure Pakistan",
-    category: "Water",
-    amount: "Rs 2,950,000",
-    status: "In Transit",
-    expected: "02 May 2026",
-  },
-  {
-    poNo: "PO-2026-194",
-    supplier: "Fresh Valley Juices",
-    category: "Juice",
-    amount: "Rs 1,760,000",
-    status: "Pending Approval",
-    expected: "04 May 2026",
-  },
-  {
-    poNo: "PO-2026-196",
-    supplier: "Energy Rush Pvt Ltd",
-    category: "Energy",
-    amount: "Rs 3,120,000",
-    status: "Received",
-    expected: "28 Apr 2026",
-  },
-];
+import { useAuth } from "@/app/providers";
+import { getCurrentUser, supabase } from "@/lib/supabase";
 
 const statusStyle: Record<string, string> = {
   Approved: "bg-emerald-50 text-emerald-700 ring-emerald-100",
   "In Transit": "bg-blue-50 text-blue-700 ring-blue-100",
   "Pending Approval": "bg-amber-50 text-amber-700 ring-amber-100",
   Received: "bg-slate-100 text-slate-700 ring-slate-200",
+};
+
+type PurchaseOrderRow = {
+  id: string;
+  poNo: string;
+  supplier: string;
+  amount: number;
+  amountLabel: string;
+  status: string;
+  expected: string;
+  expectedDate: string | null;
+  itemsCount: number;
+  notes: string;
+  createdAt: string | null;
 };
 
 function linePoints(values: number[]) {
@@ -88,10 +59,140 @@ function linePoints(values: number[]) {
     .join(" ");
 }
 
-const purchaseTrendPoints = linePoints(monthlyPurchase);
-
 export default function PurchaseOrdersPage() {
+  const { user } = useAuth();
   const [createPoOpen, setCreatePoOpen] = useState(false);
+  const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrderRow[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const loadPurchaseOrders = async () => {
+      try {
+        const user = await getCurrentUser();
+        if (!user) {
+          setPurchaseOrders([]);
+          setLoading(false);
+          return;
+        }
+
+        const { data, error } = await supabase
+          .from("purchase_orders")
+          .select("id, po_number, supplier_name, status, expected_delivery_date, total_amount, items_count, notes, created_at")
+          .eq("created_by", user.id)
+          .order("created_at", { ascending: false });
+
+        if (error) {
+          console.warn("Could not load purchase orders from database:", error.message);
+          setPurchaseOrders([]);
+          return;
+        }
+
+        const transformed = (data || []).map((order: any) => ({
+          id: order.id,
+          poNo: order.po_number,
+          supplier: order.supplier_name,
+          amount: Number(order.total_amount || 0),
+          amountLabel: `Rs ${(order.total_amount || 0).toLocaleString()}`,
+          status: order.status || "Pending Approval",
+          expectedDate: order.expected_delivery_date || null,
+          expected: order.expected_delivery_date ? new Date(order.expected_delivery_date).toLocaleDateString("en-GB", {
+            day: "2-digit",
+            month: "short",
+            year: "numeric",
+          }) : "TBD",
+          itemsCount: Number(order.items_count || 0),
+          notes: order.notes || "",
+          createdAt: order.created_at || null,
+        }));
+
+        setPurchaseOrders(transformed);
+      } catch (error: any) {
+        console.warn("Could not load purchase orders from database:", error?.message);
+        setPurchaseOrders([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadPurchaseOrders();
+  }, [createPoOpen, user?.id]);
+
+  const orderPipeline = {
+    pending: purchaseOrders.filter((order) => order.status === "Pending Approval").length,
+    transit: purchaseOrders.filter((order) => order.status === "In Transit").length,
+    received: purchaseOrders.filter((order) => order.status === "Received" || order.status === "Approved").length,
+  };
+
+  const openPurchaseOrders = purchaseOrders.filter((order) => order.status !== "Received").length;
+  const today = new Date();
+  const weekAhead = new Date();
+  weekAhead.setDate(today.getDate() + 7);
+
+  const expectedThisWeek = purchaseOrders.reduce((sum, order) => {
+    if (!order.expectedDate) return sum;
+
+    const expectedDate = new Date(order.expectedDate);
+    if (Number.isNaN(expectedDate.getTime())) return sum;
+
+    return expectedDate >= today && expectedDate <= weekAhead ? sum + order.amount : sum;
+  }, 0);
+  const receivedRate = purchaseOrders.length > 0
+    ? Math.round((orderPipeline.received / purchaseOrders.length) * 100)
+    : 0;
+
+  const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const monthlyTotals = monthNames.map((month, index) => {
+    const total = purchaseOrders.reduce((sum, order) => {
+      if (!order.createdAt) return sum;
+      const createdAt = new Date(order.createdAt);
+      return createdAt.getMonth() === index ? sum + order.amount : sum;
+    }, 0);
+
+    return { month, value: total / 1000000 };
+  });
+
+  const monthlyTrendPoints = linePoints(monthlyTotals.map((item) => item.value));
+
+  const suppliers = purchaseOrders.reduce<Record<string, { count: number; amount: number }>>((accumulator, order) => {
+    const current = accumulator[order.supplier] || { count: 0, amount: 0 };
+    current.count += 1;
+    current.amount += order.amount;
+    accumulator[order.supplier] = current;
+    return accumulator;
+  }, {});
+
+  const topSuppliers = Object.entries(suppliers)
+    .map(([supplier, stats]) => ({ supplier, ...stats }))
+    .sort((left, right) => right.amount - left.amount)
+    .slice(0, 4);
+
+  const alerts = [
+    ...purchaseOrders
+      .filter((order) => order.status === "Pending Approval")
+      .slice(0, 2)
+      .map((order) => ({
+        id: order.poNo,
+        title: `${order.poNo} awaiting approval`,
+        severity: "Medium",
+        time: order.notes || "Pending review",
+      })),
+    ...purchaseOrders
+      .filter((order) => order.status === "In Transit")
+      .slice(0, 1)
+      .map((order) => ({
+        id: order.poNo,
+        title: `${order.poNo} in transit`,
+        severity: "Low",
+        time: order.expected,
+      })),
+  ];
+
+  const poMetrics = [
+    { label: "Open Purchase Orders", value: openPurchaseOrders.toString(), detail: `${orderPipeline.pending} require approval` },
+    { label: "Expected This Week", value: `Rs ${expectedThisWeek.toLocaleString()}`, detail: "Orders due in the next 7 days" },
+    { label: "Received Rate", value: `${receivedRate}%`, detail: "Based on live PO statuses" },
+    { label: "Pending GRN", value: orderPipeline.pending.toString(), detail: "Warehouse action needed" },
+  ];
 
   return (
     <ProtectedRoute>
@@ -111,7 +212,7 @@ export default function PurchaseOrdersPage() {
               { label: "Inventory", href: "/inventory", active: false },
               { label: "Purchase Orders", href: "/purchase-orders", active: true },
               { label: "Customers", href: "/customers", active: false },
-              { label: "Reports", href: "#", active: false },
+              { label: "Sales / Invoices", href: "/sales", active: false },
             ].map((item) => (
               <Link
                 key={item.label}
@@ -132,7 +233,9 @@ export default function PurchaseOrdersPage() {
             </p>
             <div className="mt-3 flex items-center justify-between text-sm">
               <span className="text-slate-600">Trucks in transit</span>
-              <span className="font-semibold text-blue-700">5</span>
+              <span className="font-semibold text-blue-700">
+                {purchaseOrders.filter((order) => order.status === "In Transit").length}
+              </span>
             </div>
           </div>
         </aside>
@@ -216,12 +319,12 @@ export default function PurchaseOrdersPage() {
                         strokeWidth="2.4"
                         strokeLinejoin="round"
                         strokeLinecap="round"
-                        points={purchaseTrendPoints}
+                        points={monthlyTrendPoints}
                       />
                     </svg>
                   </div>
                   <div className="mt-3 grid grid-cols-6 gap-2 text-xs text-slate-500 sm:grid-cols-12">
-                    {months.map((month) => (
+                    {monthNames.map((month) => (
                       <span key={month} className="text-center">{month}</span>
                     ))}
                   </div>
@@ -238,22 +341,78 @@ export default function PurchaseOrdersPage() {
                       <CircleDashed className="h-4 w-4 text-amber-500" />
                       Pending Approval
                     </div>
-                    <span className="font-semibold text-slate-900">11</span>
+                    <span className="font-semibold text-slate-900">{orderPipeline.pending}</span>
                   </div>
                   <div className="flex items-center justify-between rounded-xl border border-slate-200 p-3 text-sm">
                     <div className="inline-flex items-center gap-2 text-slate-700">
                       <Truck className="h-4 w-4 text-blue-600" />
                       In Transit
                     </div>
-                    <span className="font-semibold text-slate-900">9</span>
+                    <span className="font-semibold text-slate-900">{orderPipeline.transit}</span>
                   </div>
                   <div className="flex items-center justify-between rounded-xl border border-slate-200 p-3 text-sm">
                     <div className="inline-flex items-center gap-2 text-slate-700">
                       <CircleCheckBig className="h-4 w-4 text-emerald-600" />
                       Received
                     </div>
-                    <span className="font-semibold text-slate-900">22</span>
+                    <span className="font-semibold text-slate-900">{orderPipeline.received}</span>
                   </div>
+                </CardContent>
+              </Card>
+            </section>
+
+            <section className="mt-6 grid gap-4 lg:grid-cols-2">
+              <Card className="border-slate-200 bg-white shadow-sm">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-lg font-semibold text-slate-950">Top Suppliers</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {topSuppliers.length > 0 ? (
+                    topSuppliers.map((supplier) => (
+                      <div key={supplier.supplier}>
+                        <div className="mb-1 flex items-center justify-between text-xs text-slate-500">
+                          <span>{supplier.supplier}</span>
+                          <span className="font-medium text-slate-700">{supplier.count} orders</span>
+                        </div>
+                        <div className="h-2 rounded-full bg-slate-100">
+                          <div className="h-2 rounded-full bg-blue-600" style={{ width: `${Math.min((supplier.amount / Math.max(expectedThisWeek, 1)) * 100, 100)}%` }} />
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-sm text-slate-500">No supplier data available yet.</p>
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card className="border-slate-200 bg-white shadow-sm">
+                <CardHeader className="pb-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <CardTitle className="text-lg font-semibold text-slate-950">Operational Alerts</CardTitle>
+                    <Badge className="w-fit rounded-full bg-red-50 px-3 py-1 text-xs text-red-700 ring-1 ring-red-100">
+                      {alerts.length} active alerts
+                    </Badge>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {alerts.length > 0 ? (
+                    alerts.map((alert) => (
+                      <div key={alert.id} className="flex flex-col gap-2 rounded-xl border border-slate-200 p-4 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                          <p className="text-sm font-medium text-slate-900">{alert.title}</p>
+                          <p className="text-xs text-slate-500">{alert.id}</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Badge className="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-700 ring-1 ring-slate-200">
+                            {alert.severity}
+                          </Badge>
+                          <span className="text-xs text-slate-500">{alert.time}</span>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-sm text-slate-500">No current purchase-order alerts.</p>
+                  )}
                 </CardContent>
               </Card>
             </section>
@@ -294,7 +453,7 @@ export default function PurchaseOrdersPage() {
                       <tr>
                         <th className="px-6 py-4">PO Number</th>
                         <th className="px-6 py-4">Supplier</th>
-                        <th className="px-6 py-4">Category</th>
+                        <th className="px-6 py-4">Items</th>
                         <th className="px-6 py-4">Amount</th>
                         <th className="px-6 py-4">Status</th>
                         <th className="px-6 py-4">Expected Delivery</th>
@@ -302,55 +461,69 @@ export default function PurchaseOrdersPage() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 bg-white">
-                      {orders.map((order) => (
-                        <tr key={order.poNo} className="hover:bg-slate-50/80">
-                          <td className="whitespace-nowrap px-6 py-4 text-slate-600">{order.poNo}</td>
-                          <td className="px-6 py-4 font-medium text-slate-900">{order.supplier}</td>
-                          <td className="whitespace-nowrap px-6 py-4 text-slate-700">{order.category}</td>
-                          <td className="whitespace-nowrap px-6 py-4 font-semibold text-slate-900">{order.amount}</td>
-                          <td className="px-6 py-4">
-                            <Badge className={`rounded-full px-3 py-1 text-xs font-semibold ring-1 ${statusStyle[order.status]}`}>
-                              {order.status}
-                            </Badge>
-                          </td>
-                          <td className="whitespace-nowrap px-6 py-4 text-slate-700">{order.expected}</td>
-                          <td className="px-6 py-4">
-                            <div className="flex items-center justify-end gap-2">
-                              <Button variant="outline" className="h-9 rounded-full px-4 text-xs">View</Button>
-                              <Button className="h-9 rounded-full bg-blue-600 px-4 text-xs text-white hover:bg-blue-700">Update</Button>
-                            </div>
+                      {purchaseOrders.length > 0 ? (
+                        purchaseOrders.map((order) => (
+                          <tr key={order.id} className="hover:bg-slate-50/80">
+                            <td className="whitespace-nowrap px-6 py-4 text-slate-600">{order.poNo}</td>
+                            <td className="px-6 py-4 font-medium text-slate-900">{order.supplier}</td>
+                            <td className="whitespace-nowrap px-6 py-4 text-slate-700">{order.itemsCount} items</td>
+                            <td className="whitespace-nowrap px-6 py-4 font-semibold text-slate-900">{order.amountLabel}</td>
+                            <td className="px-6 py-4">
+                              <Badge className={`rounded-full px-3 py-1 text-xs font-semibold ring-1 ${statusStyle[order.status] || statusStyle["Pending Approval"]}`}>
+                                {order.status}
+                              </Badge>
+                            </td>
+                            <td className="whitespace-nowrap px-6 py-4 text-slate-700">{order.expected}</td>
+                            <td className="px-6 py-4">
+                              <div className="flex items-center justify-end gap-2">
+                                <Button variant="outline" className="h-9 rounded-full px-4 text-xs">View</Button>
+                                <Button className="h-9 rounded-full bg-blue-600 px-4 text-xs text-white hover:bg-blue-700">Update</Button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr>
+                          <td colSpan={7} className="px-6 py-10 text-center text-sm text-slate-500">
+                            {loading ? "Loading purchase orders from Supabase..." : "No purchase orders found in the database yet."}
                           </td>
                         </tr>
-                      ))}
+                      )}
                     </tbody>
                   </table>
                 </div>
 
                 <div className="space-y-3 p-4 md:hidden">
-                  {orders.map((order) => (
-                    <div key={order.poNo} className="rounded-xl border border-slate-200 p-4">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="text-sm font-semibold text-slate-950">{order.poNo}</p>
-                          <p className="text-xs text-slate-500">{order.supplier}</p>
+                  {purchaseOrders.length > 0 ? (
+                    purchaseOrders.map((order) => (
+                      <div key={order.id} className="rounded-xl border border-slate-200 p-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-semibold text-slate-950">{order.poNo}</p>
+                            <p className="text-xs text-slate-500">{order.supplier}</p>
+                          </div>
+                          <Badge className={`rounded-full px-3 py-1 text-xs font-semibold ring-1 ${statusStyle[order.status] || statusStyle["Pending Approval"]}`}>
+                            {order.status}
+                          </Badge>
                         </div>
-                        <Badge className={`rounded-full px-3 py-1 text-xs font-semibold ring-1 ${statusStyle[order.status]}`}>
-                          {order.status}
-                        </Badge>
-                      </div>
 
-                      <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-600">
-                        <p>Category: {order.category}</p>
-                        <p>Amount: {order.amount}</p>
-                        <p className="col-span-2">Expected: {order.expected}</p>
-                      </div>
+                        <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-600">
+                          <p>Items: {order.itemsCount}</p>
+                          <p>Amount: {order.amountLabel}</p>
+                          <p className="col-span-2">Expected: {order.expected}</p>
+                        </div>
 
-                      <div className="mt-3 grid grid-cols-2 gap-2">
-                        <Button variant="outline" className="h-9 rounded-full px-3 text-xs">View</Button>
-                        <Button className="h-9 rounded-full bg-blue-600 px-3 text-xs text-white hover:bg-blue-700">Update</Button>
+                        <div className="mt-3 grid grid-cols-2 gap-2">
+                          <Button variant="outline" className="h-9 rounded-full px-3 text-xs">View</Button>
+                          <Button className="h-9 rounded-full bg-blue-600 px-3 text-xs text-white hover:bg-blue-700">Update</Button>
+                        </div>
                       </div>
+                    ))
+                  ) : (
+                    <div className="rounded-xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">
+                      {loading ? "Loading purchase orders from Supabase..." : "No purchase orders found in the database yet."}
                     </div>
-                  ))}
+                  )}
                 </div>
               </CardContent>
             </Card>

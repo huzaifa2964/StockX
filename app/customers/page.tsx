@@ -1,3 +1,6 @@
+"use client";
+
+import { useState, useEffect } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -7,60 +10,9 @@ import { UserMenu } from "@/components/user-menu";
 import { Boxes, ChevronRight, ClipboardList, LayoutDashboard, Mail, Phone, Search, Settings, Users } from "lucide-react";
 import Link from "next/link";
 import { ProtectedRoute } from "@/components/protected-route";
-
-const customerMetrics = [
-  { label: "Active Retailers", value: "186", detail: "14 added this month" },
-  { label: "Pending Payments", value: "27", detail: "8 overdue this week" },
-  { label: "Monthly Orders", value: "1,092", detail: "Across active routes" },
-  { label: "Recovery Rate", value: "94.8%", detail: "Last 30 days" },
-];
-
-const customers = [
-  {
-    id: "CUST-0012",
-    businessName: "Al-Madina Super Store",
-    contactPerson: "Saeed Ahmed",
-    phone: "+92 300 1144556",
-    email: "almadina.store@example.com",
-    cityArea: "Korangi, Karachi",
-    status: "Good Standing",
-    outstanding: "Rs 0",
-    lastOrder: "26 Apr 2026",
-  },
-  {
-    id: "CUST-0048",
-    businessName: "City Mart Wholesale",
-    contactPerson: "Farhan Qureshi",
-    phone: "+92 321 5567788",
-    email: "citymart.wholesale@example.com",
-    cityArea: "Saddar, Karachi",
-    status: "Pending",
-    outstanding: "Rs 182,000",
-    lastOrder: "25 Apr 2026",
-  },
-  {
-    id: "CUST-0079",
-    businessName: "Noor Cash & Carry",
-    contactPerson: "Usman Tariq",
-    phone: "+92 333 2233445",
-    email: "noor.cashcarry@example.com",
-    cityArea: "North Nazimabad, Karachi",
-    status: "At Risk",
-    outstanding: "Rs 364,500",
-    lastOrder: "21 Apr 2026",
-  },
-  {
-    id: "CUST-0101",
-    businessName: "Pak Fresh Retail",
-    contactPerson: "Hina Iqbal",
-    phone: "+92 302 9988776",
-    email: "pakfresh.retail@example.com",
-    cityArea: "Gulshan, Karachi",
-    status: "Good Standing",
-    outstanding: "Rs 24,000",
-    lastOrder: "27 Apr 2026",
-  },
-];
+import { RegisterCustomerSheet } from "@/components/register-customer-sheet";
+import { useAuth } from "@/app/providers";
+import { getCurrentUser, supabase } from "@/lib/supabase";
 
 const statusStyles: Record<string, string> = {
   "Good Standing": "bg-emerald-50 text-emerald-700 ring-emerald-100",
@@ -68,7 +20,104 @@ const statusStyles: Record<string, string> = {
   "At Risk": "bg-red-50 text-red-700 ring-red-100",
 };
 
+interface CustomerRow {
+  id: string;
+  businessName: string;
+  contactPerson: string;
+  phone: string;
+  email: string;
+  cityArea: string;
+  status: string;
+  outstanding: string;
+  outstandingValue: number;
+  lastOrder: string;
+  createdAt: string | null;
+}
+
 export default function CustomersPage() {
+  const { user } = useAuth();
+  const [registerCustomerOpen, setRegisterCustomerOpen] = useState(false);
+  const [customersData, setCustomersData] = useState<CustomerRow[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchCustomers = async () => {
+      try {
+        const user = await getCurrentUser();
+        if (!user) {
+          setCustomersData([]);
+          setLoading(false);
+          return;
+        }
+
+        const { data, error } = await supabase
+          .from("customers")
+          .select("*")
+          .eq("created_by", user.id)
+          .order("created_at", { ascending: false });
+
+        if (error) {
+          console.warn("Could not load customers from database:", error.message);
+          setCustomersData([]);
+          return;
+        }
+
+        const transformed = (data || []).map((customer: any) => ({
+          id: customer.id,
+          businessName: customer.business_name,
+          contactPerson: customer.contact_person,
+          phone: customer.phone,
+          email: customer.email,
+          cityArea: customer.city_area,
+          status: customer.status || "Good Standing",
+          outstanding: `Rs ${(customer.outstanding_balance || 0).toLocaleString()}`,
+          outstandingValue: Number(customer.outstanding_balance || 0),
+          lastOrder: customer.last_order_date || "N/A",
+          createdAt: customer.created_at || null,
+        }));
+
+        setCustomersData(transformed);
+      } catch (error: any) {
+        console.warn("Could not fetch customers from database:", error?.message);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchCustomers();
+  }, [registerCustomerOpen, user?.id]);
+
+  const customerMetrics = [
+    {
+      label: "Total Customers",
+      value: customersData.length.toString(),
+      detail: "Live rows from Supabase",
+    },
+    {
+      label: "Good Standing",
+      value: customersData.filter((customer) => customer.status === "Good Standing").length.toString(),
+      detail: "Accounts in healthy status",
+    },
+    {
+      label: "Outstanding Balance",
+      value: `Rs ${customersData.reduce((sum, customer) => sum + customer.outstandingValue, 0).toLocaleString()}`,
+      detail: "Across all customers",
+    },
+    {
+      label: "Recent Additions",
+      value: customersData.filter((customer) => {
+        if (!customer.createdAt) return false;
+        const createdAt = new Date(customer.createdAt);
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+        return createdAt >= thirtyDaysAgo;
+      }).length.toString(),
+      detail: "Added in the last 30 days",
+    },
+  ];
+
+  const customersToDisplay = customersData;
+
   return (
     <ProtectedRoute>
       <div className="min-h-screen bg-slate-50 text-slate-900">
@@ -87,7 +136,7 @@ export default function CustomersPage() {
               { label: "Inventory", href: "/inventory", active: false },
               { label: "Purchase Orders", href: "/purchase-orders", active: false },
               { label: "Customers", href: "/customers", active: true },
-              { label: "Reports", href: "#", active: false },
+              { label: "Sales / Invoices", href: "/sales", active: false },
             ].map((item) => (
               <Link
                 key={item.label}
@@ -110,8 +159,8 @@ export default function CustomersPage() {
             </p>
             <div className="mt-3 flex items-center justify-between">
               <div>
-                <p className="text-sm font-semibold text-slate-900">Karachi Accounts Unit</p>
-                <p className="text-xs text-slate-500">Recovery team online</p>
+                <p className="text-sm font-semibold text-slate-900">Sheikhupura Accounts Unit</p>
+                <p className="text-xs text-slate-500">Live accounts: {customersData.length}</p>
               </div>
               <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
             </div>
@@ -163,7 +212,7 @@ export default function CustomersPage() {
                 </p>
               </div>
 
-              <Button className="h-11 rounded-full bg-blue-600 px-5 text-sm font-semibold text-white shadow-sm hover:bg-blue-700">
+              <Button className="h-11 rounded-full bg-blue-600 px-5 text-sm font-semibold text-white shadow-sm hover:bg-blue-700" onClick={() => setRegisterCustomerOpen(true)}>
                 + Register Customer
               </Button>
             </div>
@@ -190,25 +239,6 @@ export default function CustomersPage() {
                     </p>
                   </div>
 
-                  <div className="grid gap-3 sm:grid-cols-3">
-                    <Select defaultValue="all">
-                      <option value="all">All Cities</option>
-                      <option value="karachi">Karachi</option>
-                      <option value="lahore">Lahore</option>
-                      <option value="islamabad">Islamabad</option>
-                    </Select>
-                    <Select defaultValue="all-status">
-                      <option value="all-status">All Status</option>
-                      <option value="good">Good Standing</option>
-                      <option value="pending">Pending</option>
-                      <option value="risk">At Risk</option>
-                    </Select>
-                    <Select defaultValue="30-days">
-                      <option value="30-days">Last 30 Days</option>
-                      <option value="7-days">Last 7 Days</option>
-                      <option value="90-days">Last 90 Days</option>
-                    </Select>
-                  </div>
                 </div>
               </CardHeader>
 
@@ -228,100 +258,114 @@ export default function CustomersPage() {
                     </thead>
 
                     <tbody className="divide-y divide-slate-100 bg-white">
-                      {customers.map((customer) => {
-                        const highOutstanding = customer.status === "At Risk";
+                      {customersToDisplay.length > 0 ? (
+                        customersToDisplay.map((customer) => {
+                          const highOutstanding = customer.status === "At Risk";
 
-                        return (
-                          <tr key={customer.id} className="hover:bg-slate-50/80">
-                            <td className="whitespace-nowrap px-6 py-4 align-middle text-slate-500">{customer.id}</td>
-                            <td className="px-6 py-4 align-middle">
-                              <p className="font-medium text-slate-950">{customer.businessName}</p>
-                              <div className="mt-1 flex flex-wrap items-center gap-4 text-xs text-slate-500">
-                                <span>{customer.contactPerson}</span>
-                                <span className="inline-flex items-center gap-1">
-                                  <Phone className="h-3.5 w-3.5" />
-                                  {customer.phone}
-                                </span>
-                                <span className="inline-flex items-center gap-1">
-                                  <Mail className="h-3.5 w-3.5" />
-                                  {customer.email}
-                                </span>
-                              </div>
-                            </td>
-                            <td className="whitespace-nowrap px-6 py-4 align-middle text-slate-700">{customer.cityArea}</td>
-                            <td className="px-6 py-4 align-middle">
-                              <Badge
-                                className={`rounded-full px-3 py-1 text-xs font-semibold ring-1 ${statusStyles[customer.status]}`}
+                          return (
+                            <tr key={customer.id} className="hover:bg-slate-50/80">
+                              <td className="whitespace-nowrap px-6 py-4 align-middle text-slate-500">{customer.id}</td>
+                              <td className="px-6 py-4 align-middle">
+                                <p className="font-medium text-slate-950">{customer.businessName}</p>
+                                <div className="mt-1 flex flex-wrap items-center gap-4 text-xs text-slate-500">
+                                  <span>{customer.contactPerson}</span>
+                                  <span className="inline-flex items-center gap-1">
+                                    <Phone className="h-3.5 w-3.5" />
+                                    {customer.phone}
+                                  </span>
+                                  <span className="inline-flex items-center gap-1">
+                                    <Mail className="h-3.5 w-3.5" />
+                                    {customer.email}
+                                  </span>
+                                </div>
+                              </td>
+                              <td className="whitespace-nowrap px-6 py-4 align-middle text-slate-700">{customer.cityArea}</td>
+                              <td className="px-6 py-4 align-middle">
+                                <Badge
+                                  className={`rounded-full px-3 py-1 text-xs font-semibold ring-1 ${statusStyles[customer.status] || statusStyles["Good Standing"]}`}
+                                >
+                                  {customer.status}
+                                </Badge>
+                              </td>
+                              <td
+                                className={`whitespace-nowrap px-6 py-4 align-middle font-semibold ${
+                                  highOutstanding ? "text-red-600" : "text-slate-900"
+                                }`}
                               >
-                                {customer.status}
-                              </Badge>
-                            </td>
-                            <td
-                              className={`whitespace-nowrap px-6 py-4 align-middle font-semibold ${
-                                highOutstanding ? "text-red-600" : "text-slate-900"
-                              }`}
-                            >
-                              {customer.outstanding}
-                            </td>
-                            <td className="whitespace-nowrap px-6 py-4 align-middle text-slate-700">{customer.lastOrder}</td>
-                            <td className="px-6 py-4 align-middle">
-                              <div className="flex items-center justify-end gap-2">
-                                <Button variant="outline" className="h-9 rounded-full px-4 text-xs">
-                                  View Ledger
-                                </Button>
-                                <Button className="h-9 rounded-full bg-blue-600 px-4 text-xs text-white hover:bg-blue-700">
-                                  Record Payment
-                                </Button>
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })}
+                                {customer.outstanding}
+                              </td>
+                              <td className="whitespace-nowrap px-6 py-4 align-middle text-slate-700">{customer.lastOrder}</td>
+                              <td className="px-6 py-4 align-middle">
+                                <div className="flex items-center justify-end gap-2">
+                                  <Button variant="outline" className="h-9 rounded-full px-4 text-xs">
+                                    View Ledger
+                                  </Button>
+                                  <Button className="h-9 rounded-full bg-blue-600 px-4 text-xs text-white hover:bg-blue-700">
+                                    Record Payment
+                                  </Button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })
+                      ) : (
+                        <tr>
+                          <td colSpan={7} className="px-6 py-10 text-center text-sm text-slate-500">
+                            {loading ? "Loading customers from Supabase..." : "No customers found in the database yet."}
+                          </td>
+                        </tr>
+                      )}
                     </tbody>
                   </table>
                 </div>
 
                 <div className="space-y-3 p-4 md:hidden">
-                  {customers.map((customer) => {
-                    const highOutstanding = customer.status === "At Risk";
+                  {customersToDisplay.length > 0 ? (
+                    customersToDisplay.map((customer) => {
+                      const highOutstanding = customer.status === "At Risk";
 
-                    return (
-                      <div key={customer.id} className="rounded-xl border border-slate-200 p-4">
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <p className="text-sm font-semibold text-slate-950">{customer.businessName}</p>
-                            <p className="text-xs text-slate-500">{customer.id}</p>
+                      return (
+                        <div key={customer.id} className="rounded-xl border border-slate-200 p-4">
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <p className="text-sm font-semibold text-slate-950">{customer.businessName}</p>
+                              <p className="text-xs text-slate-500">{customer.id}</p>
+                            </div>
+                            <Badge className={`rounded-full px-3 py-1 text-xs font-semibold ring-1 ${statusStyles[customer.status] || statusStyles["Good Standing"]}`}>
+                              {customer.status}
+                            </Badge>
                           </div>
-                          <Badge className={`rounded-full px-3 py-1 text-xs font-semibold ring-1 ${statusStyles[customer.status]}`}>
-                            {customer.status}
-                          </Badge>
-                        </div>
 
-                        <div className="mt-3 space-y-1 text-xs text-slate-600">
-                          <p>{customer.contactPerson}</p>
-                          <p>{customer.phone}</p>
-                          <p>{customer.cityArea}</p>
-                          <p className="truncate">{customer.email}</p>
-                        </div>
+                          <div className="mt-3 space-y-1 text-xs text-slate-600">
+                            <p>{customer.contactPerson}</p>
+                            <p>{customer.phone}</p>
+                            <p>{customer.cityArea}</p>
+                            <p className="truncate">{customer.email}</p>
+                          </div>
 
-                        <div className="mt-3 flex items-center justify-between">
-                          <p className={`text-sm font-semibold ${highOutstanding ? "text-red-600" : "text-slate-900"}`}>
-                            {customer.outstanding}
-                          </p>
-                          <p className="text-xs text-slate-500">Last order: {customer.lastOrder}</p>
-                        </div>
+                          <div className="mt-3 flex items-center justify-between">
+                            <p className={`text-sm font-semibold ${highOutstanding ? "text-red-600" : "text-slate-900"}`}>
+                              {customer.outstanding}
+                            </p>
+                            <p className="text-xs text-slate-500">Last order: {customer.lastOrder}</p>
+                          </div>
 
-                        <div className="mt-3 grid grid-cols-2 gap-2">
-                          <Button variant="outline" className="h-9 rounded-full px-3 text-xs">
-                            View Ledger
-                          </Button>
-                          <Button className="h-9 rounded-full bg-blue-600 px-3 text-xs text-white hover:bg-blue-700">
-                            Record Payment
-                          </Button>
+                          <div className="mt-3 grid grid-cols-2 gap-2">
+                            <Button variant="outline" className="h-9 rounded-full px-3 text-xs">
+                              View Ledger
+                            </Button>
+                            <Button className="h-9 rounded-full bg-blue-600 px-3 text-xs text-white hover:bg-blue-700">
+                              Record Payment
+                            </Button>
+                          </div>
                         </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    })
+                  ) : (
+                    <div className="rounded-xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">
+                      {loading ? "Loading customers from Supabase..." : "No customers found in the database yet."}
+                    </div>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -349,6 +393,11 @@ export default function CustomersPage() {
           </Link>
         </div>
       </nav>
+
+        <RegisterCustomerSheet
+          open={registerCustomerOpen}
+          onOpenChange={setRegisterCustomerOpen}
+        />
       </div>
     </ProtectedRoute>
   );

@@ -1,3 +1,6 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -16,43 +19,37 @@ import {
 import Link from "next/link";
 import { UserMenu } from "@/components/user-menu";
 import { ProtectedRoute } from "@/components/protected-route";
+import { useAuth } from "@/app/providers";
 
-const kpiCards = [
-  { label: "Monthly Revenue", value: "Rs 86.4M", delta: "+12.8% vs last month" },
-  { label: "Gross Margin", value: "18.6%", delta: "+1.4% improvement" },
-  { label: "Inventory Turnover", value: "6.2x", delta: "Healthy stock movement" },
-  { label: "Collection Efficiency", value: "94.8%", delta: "On-track for quarter target" },
-];
+import { supabase } from "@/lib/supabase";
 
-const monthlySales = [62, 66, 64, 71, 75, 79, 84, 82, 88, 92, 95, 101];
-const salesMonths = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+type ProductRow = {
+  id: string;
+  sku_code: string;
+  product_name: string;
+  category: string;
+  current_stock: number;
+  minimum_stock: number;
+  sell_price: number | null;
+};
 
-const collectionProgress = [
-  { week: "W1", target: 100, actual: 92 },
-  { week: "W2", target: 100, actual: 98 },
-  { week: "W3", target: 100, actual: 87 },
-  { week: "W4", target: 100, actual: 102 },
-];
+type CustomerRow = {
+  id: string;
+  business_name: string;
+  outstanding_balance: number | null;
+  credit_limit: number | null;
+  status: string | null;
+};
 
-const lowStockRoutes = [
-  { route: "Korangi Main", items: 7 },
-  { route: "Saddar East", items: 5 },
-  { route: "North Nazimabad", items: 4 },
-  { route: "Gulshan Loop", items: 3 },
-];
-
-const categoryMix = [
-  { label: "Soda", value: 46, color: "#2563eb" },
-  { label: "Water", value: 33, color: "#06b6d4" },
-  { label: "Juice", value: 15, color: "#f59e0b" },
-  { label: "Energy", value: 6, color: "#ef4444" },
-];
-
-const alerts = [
-  { id: "ALT-101", title: "7 SKU below minimum stock", severity: "High", time: "10 mins ago" },
-  { id: "ALT-098", title: "Route KR-03 collection delay", severity: "Medium", time: "35 mins ago" },
-  { id: "ALT-094", title: "2 invoices pending approval", severity: "Low", time: "1 hour ago" },
-];
+type PurchaseOrderRow = {
+  id: string;
+  po_number: string;
+  status: string | null;
+  total_amount: number | null;
+  expected_delivery_date: string | null;
+  created_at: string | null;
+  supplier_name: string;
+};
 
 function computeLinePoints(values: number[]) {
   const max = Math.max(...values);
@@ -67,7 +64,7 @@ function computeLinePoints(values: number[]) {
     .join(" ");
 }
 
-function categoryGradient(mix: typeof categoryMix) {
+function categoryGradient(mix: Array<{ label: string; value: number; color: string }>) {
   let start = 0;
 
   const stops = mix.map((item) => {
@@ -80,9 +77,143 @@ function categoryGradient(mix: typeof categoryMix) {
   return `conic-gradient(${stops.join(", ")})`;
 }
 
-const linePoints = computeLinePoints(monthlySales);
-
 export default function DashboardPage() {
+  const { user } = useAuth();
+  const [productsData, setProductsData] = useState<ProductRow[]>([]);
+  const [customersData, setCustomersData] = useState<CustomerRow[]>([]);
+  const [purchaseOrdersData, setPurchaseOrdersData] = useState<PurchaseOrderRow[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const loadDashboardData = async () => {
+      try {
+        const { data: userData } = await supabase.auth.getUser();
+        const user = userData.user;
+        if (!user) {
+          setProductsData([]);
+          setCustomersData([]);
+          setPurchaseOrdersData([]);
+          setLoading(false);
+          return;
+        }
+
+        const [productsResult, customersResult, ordersResult] = await Promise.all([
+          supabase.from("products").select("id, sku_code, product_name, category, current_stock, minimum_stock, sell_price").eq("created_by", user.id),
+          supabase.from("customers").select("id, business_name, outstanding_balance, credit_limit, status").eq("created_by", user.id),
+          supabase.from("purchase_orders").select("id, po_number, status, total_amount, expected_delivery_date, created_at, supplier_name").eq("created_by", user.id),
+        ]);
+
+        if (productsResult.error) {
+          console.warn("Could not load dashboard products:", productsResult.error.message);
+          setProductsData([]);
+        } else {
+          setProductsData((productsResult.data as ProductRow[]) || []);
+        }
+
+        if (customersResult.error) {
+          console.warn("Could not load dashboard customers:", customersResult.error.message);
+          setCustomersData([]);
+        } else {
+          setCustomersData((customersResult.data as CustomerRow[]) || []);
+        }
+
+        if (ordersResult.error) {
+          console.warn("Could not load dashboard purchase orders:", ordersResult.error.message);
+          setPurchaseOrdersData([]);
+        } else {
+          setPurchaseOrdersData((ordersResult.data as PurchaseOrderRow[]) || []);
+        }
+      } catch (error: any) {
+        console.warn("Could not load dashboard data:", error?.message);
+        setProductsData([]);
+        setCustomersData([]);
+        setPurchaseOrdersData([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadDashboardData();
+  }, [user?.id]);
+
+  const lowStockItems = productsData.filter((product) => product.current_stock <= product.minimum_stock);
+  const openPurchaseOrders = purchaseOrdersData.filter((order) => (order.status || "Pending Approval") !== "Received").length;
+  const purchaseVolume = purchaseOrdersData.reduce((sum, order) => sum + Number(order.total_amount || 0), 0);
+  const maxLowStockShortage = Math.max(
+    ...lowStockItems.map((product) => Math.max(product.minimum_stock - product.current_stock, 0)),
+    1
+  );
+
+  const kpiCards = [
+    { label: "Catalog Items", value: productsData.length.toString(), delta: `${lowStockItems.length} low stock items` },
+    { label: "Active Customers", value: customersData.length.toString(), delta: `${customersData.filter((customer) => customer.status === "Good Standing").length} healthy accounts` },
+    { label: "Open Purchase Orders", value: openPurchaseOrders.toString(), delta: `${purchaseOrdersData.filter((order) => (order.status || "") === "Pending Approval").length} awaiting approval` },
+    { label: "Purchase Volume", value: `Rs ${purchaseVolume.toLocaleString()}`, delta: loading ? "Loading live data" : "From Supabase records" },
+  ];
+
+  const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const monthlySales = monthNames.map((_, index) =>
+    purchaseOrdersData.reduce((sum, order) => {
+      if (!order.created_at) return sum;
+      const createdAt = new Date(order.created_at);
+      return createdAt.getMonth() === index ? sum + Number(order.total_amount || 0) / 1000000 : sum;
+    }, 0)
+  );
+  const salesMonths = monthNames;
+  const linePoints = computeLinePoints(monthlySales);
+
+  const categoryMix = Object.entries(
+    productsData.reduce<Record<string, number>>((accumulator, product) => {
+      accumulator[product.category] = (accumulator[product.category] || 0) + 1;
+      return accumulator;
+    }, {})
+  ).map(([label, count], index, entries) => ({
+    label,
+    value: entries.length > 0 ? (count / entries.reduce((sum, [, value]) => sum + value, 0)) * 100 : 0,
+    color: ["#2563eb", "#06b6d4", "#f59e0b", "#ef4444"][index % 4],
+  }));
+
+  const collectionProgress = customersData
+    .filter((customer) => Number(customer.credit_limit || 0) > 0)
+    .sort((left, right) => Number(right.outstanding_balance || 0) / Number(right.credit_limit || 1) - Number(left.outstanding_balance || 0) / Number(left.credit_limit || 1))
+    .slice(0, 4)
+    .map((customer) => {
+      const creditLimit = Number(customer.credit_limit || 0);
+      const outstandingBalance = Number(customer.outstanding_balance || 0);
+      const ratio = creditLimit > 0 ? Math.round((outstandingBalance / creditLimit) * 100) : 0;
+
+      return {
+        id: customer.id,
+        week: customer.business_name,
+        target: 100,
+        actual: Math.min(ratio, 100),
+      };
+    });
+
+  const lowStockRoutes = lowStockItems.slice(0, 4).map((product) => ({
+    id: product.id,
+    route: product.product_name,
+    items: Math.max(product.minimum_stock - product.current_stock, 0),
+  }));
+
+  const alerts = [
+    ...lowStockItems.slice(0, 2).map((product) => ({
+      id: product.sku_code,
+      title: `${product.product_name} is below minimum stock`,
+      severity: "High",
+      time: `${product.current_stock} on hand`,
+    })),
+    ...purchaseOrdersData
+      .filter((order) => (order.status || "") === "Pending Approval")
+      .slice(0, 1)
+      .map((order) => ({
+        id: order.po_number,
+        title: `${order.po_number} awaiting approval`,
+        severity: "Medium",
+        time: order.supplier_name,
+      })),
+  ];
+
   return (
     <ProtectedRoute>
       <div className="min-h-screen bg-slate-50 text-slate-900">
@@ -101,7 +232,7 @@ export default function DashboardPage() {
               { label: "Inventory", href: "/inventory", active: false },
               { label: "Purchase Orders", href: "/purchase-orders", active: false },
               { label: "Customers", href: "/customers", active: false },
-              { label: "Reports", href: "#", active: false },
+              { label: "Sales / Invoices", href: "/sales", active: false },
             ].map((item) => (
               <Link
                 key={item.label}
@@ -125,11 +256,17 @@ export default function DashboardPage() {
             <div className="mt-3 space-y-2 text-sm">
               <div className="flex items-center justify-between">
                 <span className="text-slate-600">Orders Processed</span>
-                <span className="font-semibold text-slate-900">138</span>
+                <span className="font-semibold text-slate-900">
+                  {purchaseOrdersData.filter((order) => (order.status || "") === "Received").length}
+                </span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-slate-600">Dispatch Accuracy</span>
-                <span className="font-semibold text-emerald-600">98.2%</span>
+                <span className="font-semibold text-emerald-600">
+                  {purchaseOrdersData.length > 0
+                    ? `${Math.round((purchaseOrdersData.filter((order) => (order.status || "") === "Received").length / purchaseOrdersData.length) * 100)}%`
+                    : "0%"}
+                </span>
               </div>
             </div>
           </div>
@@ -186,9 +323,9 @@ export default function DashboardPage() {
                 <Button variant="outline" className="h-11 rounded-full px-5 text-sm">
                   Export Report
                 </Button>
-                <Button className="h-11 rounded-full bg-blue-600 px-5 text-sm font-semibold text-white hover:bg-blue-700">
-                  Open Analysis
-                </Button>
+                <Link href="/sales" className="inline-flex h-11 items-center rounded-full bg-blue-600 px-5 text-sm font-semibold text-white hover:bg-blue-700">
+                  Open Sales
+                </Link>
               </div>
             </div>
 
@@ -207,7 +344,7 @@ export default function DashboardPage() {
             <section className="mt-6 grid gap-4 xl:grid-cols-3">
               <Card className="border-slate-200 bg-white shadow-sm xl:col-span-2">
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-lg font-semibold text-slate-950">Monthly Sales Trend (PKR Mn)</CardTitle>
+                  <CardTitle className="text-lg font-semibold text-slate-950">Monthly Order Value Trend (PKR Mn)</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="h-56 rounded-xl border border-slate-100 bg-slate-50 p-4">
@@ -232,7 +369,7 @@ export default function DashboardPage() {
 
               <Card className="border-slate-200 bg-white shadow-sm">
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-lg font-semibold text-slate-950">Category Sales Mix</CardTitle>
+                  <CardTitle className="text-lg font-semibold text-slate-950">Catalog Category Mix</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="mx-auto h-44 w-44 rounded-full" style={{ background: categoryGradient(categoryMix) }}>
@@ -245,7 +382,7 @@ export default function DashboardPage() {
                           <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: item.color }} />
                           <span className="text-slate-600">{item.label}</span>
                         </div>
-                        <span className="font-semibold text-slate-900">{item.value}%</span>
+                        <span className="font-semibold text-slate-900">{Math.round(item.value)}%</span>
                       </div>
                     ))}
                   </div>
@@ -256,14 +393,14 @@ export default function DashboardPage() {
             <section className="mt-6 grid gap-4 lg:grid-cols-2">
               <Card className="border-slate-200 bg-white shadow-sm">
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-lg font-semibold text-slate-950">Collections vs Target</CardTitle>
+                  <CardTitle className="text-lg font-semibold text-slate-950">Top Credit Accounts</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
                   {collectionProgress.map((item) => (
-                    <div key={item.week}>
+                    <div key={item.id}>
                       <div className="mb-1 flex items-center justify-between text-xs text-slate-500">
                         <span>{item.week}</span>
-                        <span className="font-medium text-slate-700">{item.actual}% achieved</span>
+                        <span className="font-medium text-slate-700">{item.actual}% utilized</span>
                       </div>
                       <div className="h-2 rounded-full bg-slate-100">
                         <div
@@ -278,17 +415,17 @@ export default function DashboardPage() {
 
               <Card className="border-slate-200 bg-white shadow-sm">
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-lg font-semibold text-slate-950">Low Stock by Route</CardTitle>
+                  <CardTitle className="text-lg font-semibold text-slate-950">Low Stock Watchlist</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
                   {lowStockRoutes.map((item) => (
-                    <div key={item.route}>
+                    <div key={item.id}>
                       <div className="mb-1 flex items-center justify-between text-xs text-slate-500">
                         <span>{item.route}</span>
                         <span className="font-medium text-red-600">{item.items} items</span>
                       </div>
                       <div className="h-2 rounded-full bg-slate-100">
-                        <div className="h-2 rounded-full bg-red-500" style={{ width: `${item.items * 12}%` }} />
+                        <div className="h-2 rounded-full bg-red-500" style={{ width: `${Math.max((item.items / maxLowStockShortage) * 100, 8)}%` }} />
                       </div>
                     </div>
                   ))}
@@ -301,7 +438,7 @@ export default function DashboardPage() {
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <CardTitle className="text-lg font-semibold text-slate-950">Operational Alerts</CardTitle>
                   <Badge className="w-fit rounded-full bg-red-50 px-3 py-1 text-xs text-red-700 ring-1 ring-red-100">
-                    3 active alerts
+                    {alerts.length} active alerts
                   </Badge>
                 </div>
               </CardHeader>
@@ -341,6 +478,10 @@ export default function DashboardPage() {
           <Link href="/inventory" className="flex flex-col items-center gap-1 text-slate-500">
             <Boxes className="h-5 w-5" />
             <span className="text-xs font-medium">Inventory</span>
+          </Link>
+          <Link href="/sales" className="flex flex-col items-center gap-1 text-blue-700">
+            <ClipboardList className="h-5 w-5" />
+            <span className="text-xs font-medium">Sales</span>
           </Link>
           <Link href="/purchase-orders" className="flex flex-col items-center gap-1 text-slate-500">
             <ClipboardList className="h-5 w-5" />
